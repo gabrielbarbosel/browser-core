@@ -19,6 +19,7 @@ from .session import SessionManager
 from .settings import Settings, default_settings
 from .types import BrowserType, WebDriverProtocol
 from .utils import deep_merge_dicts
+from .windows import WindowManager
 
 
 class Browser:
@@ -77,6 +78,9 @@ class Browser:
         self.driver_manager = DriverManager(logger=self.session_manager.logger)
         self.selector_manager = SelectorManager(logger=self.session_manager.logger)
 
+        # O WindowManager é inicializado como None; será criado no método start().
+        self.window_manager: Optional[WindowManager] = None
+
         self.logger = self.session_manager.logger
         atexit.register(self._cleanup)
         self.logger.info("Instância do Browser criada e pronta para iniciar.")
@@ -105,6 +109,9 @@ class Browser:
                 browser_config=self.settings.get("browser", {}),
                 user_profile_dir=self.profile_manager.get_browser_profile_path(),
             )
+
+            # Inicializa o WindowManager após o driver ter sido criado.
+            self.window_manager = WindowManager(self._driver, self.logger)
 
             self._configure_driver_timeouts()
             self._is_started = True
@@ -166,8 +173,39 @@ class Browser:
         self._ensure_started()
         return self._driver.execute_script(script, *args)
 
+    def open_tab(self, name: Optional[str] = None) -> str:
+        """
+        Abre uma nova aba e retorna o seu nome de identificação.
+
+        Args:
+            name: Um nome opcional para a aba.
+
+        Returns:
+            O nome (alias) da nova aba.
+        """
+        self._ensure_started()
+        return self.window_manager.open_tab(name)
+
+    def switch_to_tab(self, name: str) -> None:
+        """
+        Alterna o foco do navegador para uma aba específica.
+
+        Args:
+            name: O nome da aba para a qual alternar.
+        """
+        self._ensure_started()
+        self.window_manager.switch_to_tab(name)
+
+    def close_tab(self, name: Optional[str] = None) -> None:
+        """
+        Fecha uma aba específica. Se nenhum nome for fornecido,
+        fecha a aba atual.
+        """
+        self._ensure_started()
+        self.window_manager.close_tab(name)
+
     def _ensure_started(self) -> None:
-        if not self._is_started or not self._driver:
+        if not self._is_started or not self._driver or not self.window_manager:
             raise BrowserManagementError(
                 "Operação não permitida. O navegador não foi iniciado. Chame o método start() primeiro.")
 
