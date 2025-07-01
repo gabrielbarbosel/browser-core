@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "browser-core"
+version = "1.0.0"
+authors = [
+    { name = "gabigolo" }
+]
+description = "Um framework robusto e configurável para automação de navegadores, com gestão de perfis, sessões e uma CLI."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+keywords = ["automation", "selenium", "web", "browser", "framework"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Test-driven Development :: User Interfaces",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/gabrielbarbosel/browser-core"
+"Bug Tracker" = "https://github.com/gabrielbarbosel/browser-core/issues"
+"Repository" = "https://github.com/gabrielbarbosel/browser-core"
+
+
+dependencies = [
+    "selenium>=4.15.0",
+    "webdriver-manager>=4.0.1",
+    "click>=8.0.0",
+    "typing-extensions>=4.0.0",
+]
+
+[project.scripts]
+browser-core = "browser.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,26 @@
+# Trata todos os ficheiros como "auto" por padrão.
+* text=auto eol=lf
+
+# Força ficheiros de texto conhecidos a terem terminações de linha LF (Linux/macOS).
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.in text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.html text eol=lf
+
+# Define explicitamente que estes tipos de ficheiros são binários e não devem ser alterados.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.eot binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
