@@ -52,3 +52,6 @@ Thumbs.db
 # Ficheiros de ambiente (NUNCA comitar segredos)
 .env
 .env.*
+
+# Ficheiros de configuração de credenciais locais
+.pypirc
