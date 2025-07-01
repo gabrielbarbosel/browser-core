@@ -26,12 +26,6 @@ classifiers = [
     "Topic :: Test-driven Development :: User Interfaces",
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/gabrielbarbosel/browser-core"
-"Bug Tracker" = "https://github.com/gabrielbarbosel/browser-core/issues"
-"Repository" = "https://github.com/gabrielbarbosel/browser-core"
-
-
 dependencies = [
     "selenium>=4.15.0",
     "webdriver-manager>=4.0.1",
@@ -39,6 +33,12 @@ dependencies = [
     "typing-extensions>=4.0.0",
 ]
 
+[project.urls]
+"Homepage" = "https://github.com/gabrielbarbosel/browser-core"
+"Bug Tracker" = "https://github.com/gabrielbarbosel/browser-core/issues"
+"Repository" = "https://github.com/gabrielbarbosel/browser-core"
+
+# Define o ponto de entrada para a nossa ferramenta de linha de comando (CLI)
 [project.scripts]
 browser-core = "browser.cli:cli"
 
