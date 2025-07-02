@@ -50,7 +50,7 @@ Importe e use o `Browser` no seu projeto de automação.
 **Exemplo Básico:**
 
 ```python
-from browser import Browser, Settings, BrowserType
+from browser_core import Browser, Settings, BrowserType
 
 try:
     # Use 'with' para garantir que o navegador é fechado corretamente
@@ -64,7 +64,7 @@ except Exception as e:
 **Exemplo com Gestão de Abas:**
 
 ```python
-from browser import Browser, BrowserType
+from browser_core import Browser, BrowserType
 
 try:
     with Browser("multi_tab_user", BrowserType.CHROME) as browser:

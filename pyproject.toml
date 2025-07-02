@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "browser-core"
-version = "1.1.0"
+version = "1.1.1"
 authors = [
     { name = "gabigolo" }
 ]
@@ -39,7 +39,7 @@ dependencies = [
 "Repository" = "https://github.com/gabrielbarbosel/browser-core"
 
 [project.scripts]
-browser-core = "browser.cli:cli"
+browser-core = "browser_core.cli:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
