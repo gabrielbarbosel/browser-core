@@ -1,36 +1,42 @@
 # Define o sistema de gestão de janelas e abas.
 #
-# Este módulo introduz o WindowManager, responsável por rastrear,
-# focar e gerir o ciclo de vida de múltiplas janelas e abas
-# numa sessão de automação, usando uma nomenclatura amigável.
+# Este módulo introduz o WindowManager, responsável por criar e retornar
+# objetos 'Tab' que permitem um controle orientado a objetos sobre cada aba
+# do navegador.
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, TYPE_CHECKING
 
-from ..types import WebDriverProtocol, LoggerProtocol
 from ..exceptions import BrowserManagementError
+from .tab import Tab  # Importa a nova classe que representa uma aba
+
+# Evita importação circular, mas permite o type hinting
+if TYPE_CHECKING:
+    from ..browser import Browser
 
 
 class WindowManager:
     """
-    Gere as janelas e abas do navegador.
+    Gere as janelas e abas do navegador, retornando objetos 'Tab' para controle.
 
-    Abstrai as operações de baixo nível do WebDriver para manipulação
-    de janelas, permitindo abrir, fechar e alternar o foco entre
-    elas de forma controlada através de nomes (aliases).
+    Abstrai as operações de baixo nível do WebDriver, permitindo abrir, fechar e
+    alternar o foco entre abas de forma controlada e orientada a objetos.
     """
 
-    def __init__(self, driver: WebDriverProtocol, logger: LoggerProtocol):
+    def __init__(self, browser_instance: "Browser"):
         """
         Inicializa o gestor de janelas.
 
         Args:
-            driver: A instância do WebDriver a ser controlada.
-            logger: A instância do logger para registar as operações.
+            browser_instance: A instância principal da classe Browser.
+                              É necessária para delegar ações como navegação e
+                              execução de scripts.
         """
-        self._driver = driver
-        self._logger = logger
-        # Mapeia um alias/nome para o respetivo handle de janela.
-        self._tabs: Dict[str, str] = {}
+        self._browser = browser_instance
+        self._driver = browser_instance._driver
+        self._logger = browser_instance.logger
+        # O dicionário agora armazena o nome da aba e o objeto Tab correspondente
+        self._tabs: Dict[str, Tab] = {}
+        self._tab_counter = 0
         self.sync_tabs()
 
     @property
@@ -41,94 +47,106 @@ class WindowManager:
     @property
     def known_handles(self) -> List[str]:
         """Retorna uma lista de todos os handles de abas conhecidos."""
-        return list(self._tabs.values())
+        return [tab.handle for tab in self._tabs.values()]
 
     def sync_tabs(self) -> None:
         """
-        Sincroniza o mapeamento interno de abas com o estado real do navegador.
+        Sincroniza o mapeamento interno de abas com o estado real do navegador,
+        criando ou atualizando os objetos Tab.
         """
-        self._logger.debug("A sincronizar handles de abas com o navegador.")
+        self._logger.debug("Sincronizando handles de abas com o navegador.")
         handles_no_navegador = self._driver.window_handles
+        self._tab_counter = len(handles_no_navegador)
 
-        # Mapeamento padrão: 'main' para a primeira, 'tab_1', 'tab_2', etc.
+        # Mapeamento padrão: 'main' para a primeira, 'tab_X' para as outras
         self._tabs = {
-            f"tab_{i}" if i > 0 else "main": handle
+            ("main" if i == 0 else f"tab_{i}"): Tab(
+                name=("main" if i == 0 else f"tab_{i}"),
+                handle=handle,
+                browser=self._browser
+            )
             for i, handle in enumerate(handles_no_navegador)
         }
-        self._logger.info(f"Abas sincronizadas: {self._tabs}")
+        self._logger.info(f"Abas sincronizadas: {list(self._tabs.keys())}")
 
-    def open_tab(self, name: Optional[str] = None) -> str:
+    def open_tab(self, name: Optional[str] = None) -> Tab:
         """
-        Abre uma nova aba, alterna o foco para ela e atribui-lhe um nome.
+        Abre uma nova aba, alterna o foco para ela e retorna o objeto Tab controlador.
 
         Args:
             name: Um nome opcional para identificar a aba (ex: "relatorios").
 
         Returns:
-            O nome (alias) da nova aba.
+            O objeto Tab que controla a nova aba.
         """
-        self._logger.info("A abrir uma nova aba...")
+        self._logger.info("Abrindo uma nova aba...")
+        previous_handles = set(self.known_handles)
         self._driver.execute_script("window.open('');")
 
-        # Encontra o novo handle que não estava na lista anterior
-        previous_handles = set(self.known_handles)
+        # Espera um momento para garantir que o novo handle apareça
+        import time
+        time.sleep(0.2)
+
         current_handles = set(self._driver.window_handles)
         new_handle = (current_handles - previous_handles).pop()
 
-        self._driver.switch_to.window(new_handle)
+        if name:
+            tab_name = name
+            if name in self._tabs:
+                self._logger.warning(f"O nome de aba '{name}' já existe. Será sobrescrito.")
+        else:
+            self._tab_counter += 1
+            tab_name = f"tab_{self._tab_counter}"
 
-        # Determina o nome para a nova aba
-        if name and name in self._tabs:
-            self._logger.warning(f"O nome de aba '{name}' já existe. Será sobrescrito.")
-
-        tab_name = name or f"tab_{len(self._tabs)}"
-        self._tabs[tab_name] = new_handle
+        new_tab = Tab(name=tab_name, handle=new_handle, browser=self._browser)
+        self._tabs[tab_name] = new_tab
 
         self._logger.info(f"Nova aba aberta e nomeada como '{tab_name}'.")
-        return tab_name
+        # Já muda o foco para a nova aba e a retorna
+        new_tab.switch_to()
+        return new_tab
+
+    def get_tab(self, name: str) -> Optional[Tab]:
+        """Retorna o objeto Tab com base no seu nome."""
+        return self._tabs.get(name)
 
     def switch_to_tab(self, name: str) -> None:
-        """
-        Alterna o foco para uma aba específica pelo seu nome.
-
-        Args:
-            name: O nome (alias) da aba para a qual alternar.
-        """
-        target_handle = self._tabs.get(name)
-        if not target_handle or target_handle not in self._driver.window_handles:
+        """Alterna o foco para uma aba específica pelo seu nome."""
+        target_tab = self.get_tab(name)
+        if not target_tab or target_tab.handle not in self._driver.window_handles:
             self.sync_tabs()  # Tenta sincronizar caso o estado tenha mudado
-            target_handle = self._tabs.get(name)
-            if not target_handle:
+            target_tab = self.get_tab(name)
+            if not target_tab:
                 raise BrowserManagementError(f"A aba com o nome '{name}' não foi encontrada.")
 
-        self._logger.info(f"A alternar foco para a aba: '{name}'")
-        self._driver.switch_to.window(target_handle)
+        self._logger.info(f"Alternando foco para a aba: '{name}'")
+        self._driver.switch_to.window(target_tab.handle)
 
     def close_tab(self, name: Optional[str] = None) -> None:
-        """
-        Fecha uma aba específica. Se nenhum nome for fornecido, fecha a aba atual.
-
-        Args:
-            name: O nome (alias) da aba a ser fechada.
-        """
+        """Fecha uma aba específica. Se nenhum nome for fornecido, fecha a aba atual."""
         if name:
-            target_handle = self._tabs.get(name)
-            if not target_handle:
+            target_tab = self.get_tab(name)
+            if not target_tab:
                 self._logger.warning(f"Tentativa de fechar uma aba inexistente: '{name}'")
                 return
         else:
-            target_handle = self.current_tab_handle
-            self._logger.info("Nenhum nome fornecido. A fechar a aba atual.")
+            # Pega a aba atual para fechar
+            target_tab = self._browser.current_tab
+            if not target_tab:
+                self._logger.warning("Não foi possível determinar a aba atual para fechar.")
+                return
+            name = target_tab.name
+            self._logger.info(f"Fechando a aba atual: '{name}'.")
 
-        # Alterna para a aba para garantir que a aba correta é fechada
-        self._driver.switch_to.window(target_handle)
+        # Delegação final
+        self._driver.switch_to.window(target_tab.handle)
         self._driver.close()
 
-        # Remove a aba fechada do mapeamento
-        if name and name in self._tabs:
+        if name in self._tabs:
             del self._tabs[name]
 
         # Sincroniza e volta para a aba principal por segurança
+        # Isso garante que o controle nunca fique "perdido"
         self.sync_tabs()
         if "main" in self._tabs:
             self.switch_to_tab("main")
