@@ -1,8 +1,11 @@
-name: Publish to PyPI
+name: Automatic Versioning and Publish to PyPI
 
 on:
   push:
-    branches: [ master ] # Roda quando atualiza a master
+    branches: [ master ]
+    paths:
+      - 'src/**'
+      - '.github/workflows/publish-to-pypi.yml'
 
 jobs:
   release:
@@ -10,11 +13,25 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup do Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.9'
+
+      - name: Bump version e criar Git tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Atualizar versão no pyproject.toml
+        run: |
+          # Este comando usa 'sed' (uma ferramenta padrão do Linux) para encontrar a linha
+          # que começa com "version =" e a substitui pela nova tag gerada no passo anterior.
+          sed -i "s/^version = \".*\"/version = \"${{ steps.tag_version.outputs.new_tag }}\"/" pyproject.toml
 
       - name: Instalar dependências e buildar
         run: |
@@ -24,5 +41,4 @@ jobs:
       - name: Publicar no PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          # Token vem dos Secrets do repositório. Nunca colocar direto aqui.
           password: ${{ secrets.PYPI_API_TOKEN }}
