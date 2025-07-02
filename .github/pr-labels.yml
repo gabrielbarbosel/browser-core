@@ -1,0 +1,35 @@
+# Um novo recurso ou melhoria
+feat:
+  - "enhancement"
+
+# Uma correção de bug
+fix:
+  - "bug"
+
+# Mudanças na documentação
+docs:
+  - "documentation"
+
+# Mudanças no CI/CD
+ci:
+  - "ci"
+
+# Adição ou correção de testes
+test:
+  - "test"
+
+# Tarefas de manutenção
+chore:
+  - "chore"
+
+# Refatoração de código
+refactor:
+  - "refactor"
+
+# Mudanças no sistema de build ou dependências
+build:
+  - "dependencies"
+
+# Mudanças de performance
+perf:
+  - "performance"

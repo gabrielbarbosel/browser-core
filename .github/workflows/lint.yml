@@ -1,0 +1,31 @@
+name: Lint and Label PR
+
+on:
+  pull_request:
+    branches:
+      - 'master'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  commitlint:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate commits with commitlint
+        uses: wagoid/commitlint-github-action@v6
+
+  labeler:
+    name: Add PR Labels
+    runs-on: ubuntu-latest
+    needs: commitlint
+    steps:
+      - uses: buluma/conventional-pr-labels@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config_file: '.github/pr-labels.yml'
