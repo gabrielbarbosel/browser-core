@@ -37,6 +37,7 @@ class SessionManager:
             profile_manager: UserProfileProtocol,
             logging_settings: LoggingConfig,
             snapshot_settings: SnapshotConfig,
+            session_id: Optional[str] = None,
     ):
         """
         Inicializa o gestor de sessão.
@@ -46,13 +47,16 @@ class SessionManager:
             profile_manager: A instância do gestor de perfis que criou esta sessão.
             logging_settings: O dicionário de configuração para os logs.
             snapshot_settings: O dicionário de configuração para os snapshots.
+            session_id: Um ID de sessão opcional para ser usado. Se None, um novo será gerado.
         """
         self.username = username
         self.profile_manager = profile_manager
         self.logging_settings = logging_settings
         self.snapshot_settings = snapshot_settings
 
-        self.session_id = generate_session_id(self.username)
+        # Se um ID de sessão for fornecido, use-o. Caso contrário, gere um novo.
+        self.session_id = session_id or generate_session_id(self.username)
+
         self.session_dir = self.profile_manager.create_session_directory(self.session_id)
 
         # A estrutura de pastas da sessão, incluindo logs, é criada aqui.
@@ -83,7 +87,7 @@ class SessionManager:
             "session_dir": self.session_dir,
             "logs_dir": self.session_dir / "logs",
             "snapshots_dir": self.session_dir / "snapshots",
-            "screenshots_dir": self.session_dir / "snapshots" / "screenshots",  # Aninhado para organização
+            "screenshots_dir": self.session_dir / "snapshots" / "screenshots",
             "browser_profile_dir": self.profile_manager.get_browser_profile_path(),
         }
         ensure_directory(paths["logs_dir"])
@@ -115,16 +119,6 @@ class SessionManager:
     ) -> Path:
         """
         Captura um 'snapshot' do estado atual do navegador.
-
-        Um snapshot pode incluir um screenshot, o DOM da página e logs do navegador,
-        conforme as configurações.
-
-        Args:
-            driver: A instância do WebDriver para interagir com o navegador.
-            name: Um nome descritivo para o snapshot (ex: 'login_screen').
-
-        Returns:
-            O caminho para o diretório do snapshot criado.
         """
         if not self.snapshot_settings.get("enabled", True):
             return Path()
