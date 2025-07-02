@@ -105,6 +105,19 @@ class ProfileConfig(TypedDict, total=False):
     persistent_browser_profile: bool
 
 
+class PathsConfig(TypedDict, total=False):
+    """
+    Define a estrutura para os caminhos de saída personalizáveis.
+    Permite separar perfis, sessões e outros artefatos.
+    """
+    profiles_base_dir: FilePath
+    sessions_base_dir: FilePath
+    # Permite injetar um caminho de perfil ou sessão específico
+    profile_path: FilePath
+    session_path: FilePath
+    session_id: str
+
+
 class SessionPathConfig(TypedDict):
     """Define a estrutura de diretórios para uma sessão individual."""
     session_dir: Path
