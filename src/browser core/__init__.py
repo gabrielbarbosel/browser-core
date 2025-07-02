@@ -1,6 +1,6 @@
-# Define a API pública do pacote `browser`.
+# Define a API pública do pacote `browser_core`.
 #
-# Este ficheiro atua como a fachada principal da biblioteca,
+# Este arquivo atua como a fachada principal da biblioteca,
 # tornando as classes, tipos e exceções mais importantes
 # acessíveis de forma limpa e direta para o utilizador final.
 
