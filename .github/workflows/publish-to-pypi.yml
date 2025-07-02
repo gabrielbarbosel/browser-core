@@ -36,7 +36,24 @@ jobs:
         run: |
           sed -i "s/^version = \".*\"/version = \"${{ steps.tag_version.outputs.new_tag }}\"/" pyproject.toml
 
-      - name: Instalar dependências e buildar
+      - name: Commit e Push da versão atualizada
+        run: |
+          # Configura o Git com um utilizador genérico para o commit.
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Adiciona o arquivo modificado ao stage do Git.
+          git add pyproject.toml
+          
+          # Faz o commit da alteração. A mensagem inclui a nova versão para clareza.
+          # '[skip ci]' é importante para evitar que este commit acione o workflow novamente,
+          # o que criaria um loop infinito.
+          git commit -m "chore(release): version ${{ steps.tag_version.outputs.new_tag }} [skip ci]"
+          
+          # Empurra o commit para a branch 'master'.
+          git push
+
+      - name: Instalar dependências e buildar o pacote
         run: |
           python -m pip install --upgrade pip build twine
           python -m build
