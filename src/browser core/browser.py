@@ -1,25 +1,26 @@
 # Define a classe principal de orquestração do navegador.
 #
-# A classe `Browser` integra todos os componentes do `browser-core`
+# A classe `Browser` integra todos os componentes do `browser_core`
 # (gestores de sessão, perfil, driver, seletores) numa única
 # interface coesa, simplificando as operações de automação.
 
 import atexit
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from selenium.common.exceptions import WebDriverException
 
 from .drivers.manager import DriverManager
 from .exceptions import BrowserManagementError, PageLoadError
 from .profile import UserProfileManager
-from .selectors.manager import SelectorDefinition, SelectorManager
+from .selectors.manager import SelectorDefinition
 from .session import SessionManager
 from .settings import Settings, default_settings
 from .types import BrowserType, WebDriverProtocol
 from .utils import deep_merge_dicts
-from .windows import WindowManager
+from .windows.manager import WindowManager
+from .windows.tab import Tab
 
 
 class Browser:
@@ -46,24 +47,17 @@ class Browser:
             settings: Um objeto de configuração unificado. Se não for fornecido,
                       serão usadas as configurações padrão.
         """
-        # Carrega as configurações padrão e mescla com as fornecidas pelo utilizador
-        # para garantir que todas as chaves de configuração existam.
         base_settings = default_settings()
-        if settings:
-            self.settings = deep_merge_dicts(base_settings, settings)
-        else:
-            self.settings = base_settings
+        self.settings = deep_merge_dicts(base_settings, settings) if settings else base_settings
 
         self.browser_type = browser_type
         self._driver: Optional[WebDriverProtocol] = None
         self._is_started = False
 
-        # Extrai as configurações específicas para cada gestor.
         profile_settings = self.settings.get("profile", {})
         session_output_dir = self.settings.get("session_output_dir", "./browser_core_output")
         profiles_base_dir = Path(session_output_dir) / "profiles"
 
-        # A inicialização dos gestores consome as fatias do objeto 'settings'.
         self.profile_manager = UserProfileManager(
             username=username,
             base_profiles_dir=profiles_base_dir,
@@ -78,23 +72,13 @@ class Browser:
         self.driver_manager = DriverManager(logger=self.session_manager.logger)
         self.selector_manager = SelectorManager(logger=self.session_manager.logger)
 
-        # O WindowManager é inicializado como None; será criado no método start().
         self.window_manager: Optional[WindowManager] = None
-
         self.logger = self.session_manager.logger
         atexit.register(self._cleanup)
         self.logger.info("Instância do Browser criada e pronta para iniciar.")
 
     def start(self, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Inicia a sessão de automação.
-
-        Este método orquestra a criação do perfil do navegador, a inicialização
-        do WebDriver e o início da sessão.
-
-        Args:
-            metadata: Metadados opcionais para associar à sessão.
-        """
+        """Inicia a sessão de automação, o WebDriver e os gestores."""
         if self._is_started:
             self.logger.warning("O método start() foi chamado, mas o navegador já está iniciado.")
             return
@@ -110,8 +94,8 @@ class Browser:
                 user_profile_dir=self.profile_manager.get_browser_profile_path(),
             )
 
-            # Inicializa o WindowManager após o driver ter sido criado.
-            self.window_manager = WindowManager(self._driver, self.logger)
+            # Inicializa o WindowManager, passando a si mesmo (self) como argumento
+            self.window_manager = WindowManager(self)
 
             self._configure_driver_timeouts()
             self._is_started = True
@@ -151,12 +135,8 @@ class Browser:
             self._driver.get(url)
         except WebDriverException as e:
             page_load_timeout = self.settings.get("timeouts", {}).get("page_load_ms", 45000)
-            raise PageLoadError(
-                f"Falha ao carregar a URL: {url}",
-                url=url,
-                timeout_ms=page_load_timeout,
-                original_error=e,
-            )
+            raise PageLoadError(f"Falha ao carregar a URL: {url}", url=url, timeout_ms=page_load_timeout,
+                                original_error=e)
 
     def find_element(self, definition: SelectorDefinition) -> Any:
         """Delega a busca de um elemento para o SelectorManager."""
@@ -173,36 +153,49 @@ class Browser:
         self._ensure_started()
         return self._driver.execute_script(script, *args)
 
-    def open_tab(self, name: Optional[str] = None) -> str:
+    def open_tab(self, name: Optional[str] = None) -> Tab:
         """
-        Abre uma nova aba e retorna o seu nome de identificação.
-
-        Args:
-            name: Um nome opcional para a aba.
-
-        Returns:
-            O nome (alias) da nova aba.
+        Abre uma nova aba e retorna o objeto Tab controlador.
         """
         self._ensure_started()
         return self.window_manager.open_tab(name)
 
-    def switch_to_tab(self, name: str) -> None:
-        """
-        Alterna o foco do navegador para uma aba específica.
+    def get_tab(self, name: str) -> Optional[Tab]:
+        """Busca e retorna um objeto Tab pelo seu nome."""
+        self._ensure_started()
+        return self.window_manager.get_tab(name)
 
-        Args:
-            name: O nome da aba para a qual alternar.
-        """
+    def list_tab_names(self) -> List[str]:
+        """Retorna uma lista com os nomes de todas as abas abertas."""
+        self._ensure_started()
+        return list(self.window_manager._tabs.keys())
+
+    def get_all_tabs(self) -> List[Tab]:
+        """Retorna a lista completa de objetos Tab controladores."""
+        self._ensure_started()
+        return list(self.window_manager._tabs.values())
+
+    @property
+    def current_tab(self) -> Optional[Tab]:
+        """Retorna o objeto Tab da aba que está atualmente em foco."""
+        self._ensure_started()
+        current_handle = self._driver.current_window_handle
+        for tab in self.get_all_tabs():
+            if tab.handle == current_handle:
+                return tab
+        return None
+
+    def switch_to_tab(self, name: str) -> None:
+        """Alterna o foco para uma aba usando seu nome (string)."""
         self._ensure_started()
         self.window_manager.switch_to_tab(name)
 
     def close_tab(self, name: Optional[str] = None) -> None:
-        """
-        Fecha uma aba específica. Se nenhum nome for fornecido,
-        fecha a aba atual.
-        """
+        """Fecha uma aba específica. Se nenhum nome for fornecido, fecha a aba atual."""
         self._ensure_started()
         self.window_manager.close_tab(name)
+
+    # --- Métodos Internos ---
 
     def _ensure_started(self) -> None:
         if not self._is_started or not self._driver or not self.window_manager:
@@ -212,7 +205,6 @@ class Browser:
     def _configure_driver_timeouts(self) -> None:
         if not self._driver:
             return
-
         timeouts = self.settings.get("timeouts", {})
         self._driver.set_page_load_timeout(timeouts.get("page_load_ms", 45000) / 1000.0)
         self._driver.set_script_timeout(timeouts.get("script_ms", 30000) / 1000.0)
@@ -225,10 +217,8 @@ class Browser:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Se ocorreu uma exceção dentro do bloco 'with', tira um snapshot de erro.
         if exc_type is not None:
-            self.logger.error("Exceção não tratada no bloco 'with'. A tirar snapshot de erro.", exc_info=True)
-            # A flag 'on_error' nas settings controla se isto acontece.
+            self.logger.error("Exceção não tratada no bloco 'with'. Tirando snapshot de erro.", exc_info=True)
             if self.settings.get("snapshots", {}).get("on_error", True):
                 self.take_snapshot("unhandled_exception")
         self.stop()

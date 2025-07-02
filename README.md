@@ -21,7 +21,8 @@ lógica de negócio da automação, e não na infraestrutura.
 * **Perfis de Utilizador Persistentes**: Mantém o estado do navegador (cookies, etc.) entre execuções.
 * **Sessões de Automação Isoladas**: Cada execução gera uma sessão única com os seus próprios logs e snapshots.
 * **Snapshots Inteligentes**: Captura o estado da página em pontos-chave ou em caso de erro.
-* **Gestão de Abas Intuitiva**: Abra, feche e alterne entre abas usando nomes amigáveis.
+* **Gestão de Abas Orientada a Objetos**: Abra, feche e alterne entre abas usando objetos `Tab` para um controle mais
+  limpo e intuitivo.
 * **Configuração Flexível**: Um sistema de configurações unificado permite personalizar facilmente o comportamento do
   navegador.
 * **CLI Integrada**: Uma ferramenta de linha de comando para gerir o ecossistema.
@@ -50,10 +51,11 @@ Importe e use o `Browser` no seu projeto de automação.
 **Exemplo Básico:**
 
 ```python
-from browser_core import Browser, Settings, BrowserType
+# Importações atualizadas para usar 'browser_core'
+from browser_core import Browser, BrowserType, Settings
 
 try:
-    # Use 'with' para garantir que o navegador é fechado corretamente
+    # O 'with' garante que o navegador seja fechado corretamente
     with Browser("meu_utilizador", BrowserType.CHROME) as browser:
         browser.navigate_to("https://www.google.com")
         print("Automação concluída!")
@@ -61,29 +63,40 @@ except Exception as e:
     print(f"ERRO: {e}")
 ```
 
-**Exemplo com Gestão de Abas:**
+**Exemplo com Gestão de Abas (Nova API Orientada a Objetos):**
+
+Este exemplo foi completamente reescrito para demonstrar o novo sistema de gerenciamento de abas, que é muito mais
+poderoso e intuitivo.
 
 ```python
 from browser_core import Browser, BrowserType
 
 try:
     with Browser("multi_tab_user", BrowserType.CHROME) as browser:
-        # A primeira aba é a 'main'
-        browser.navigate_to("https://www.google.com")
-        print(f"Título da aba 'main': {browser._driver.title}")
+        # A primeira aba é sempre a 'main'. Podemos obter seu objeto de controle.
+        main_tab = browser.current_tab
+        main_tab.navigate_to("[https://www.google.com](https://www.google.com)")
+        print(f"Aba '{main_tab.name}' navegou para: {browser.current_url}")
 
-        # Abrir e nomear uma nova aba para relatórios
-        reports_tab_name = browser.open_tab(name="relatorios")
-        browser.navigate_to("https://www.bing.com")
-        print(f"Título da aba '{reports_tab_name}': {browser._driver.title}")
+        # Abrir uma nova aba para relatórios. O método já retorna o objeto 'Tab'.
+        reports_tab = browser.open_tab(name="relatorios")
+        reports_tab.navigate_to("[https://www.bing.com](https://www.bing.com)")
+        print(f"Aba '{reports_tab.name}' navegou para: {browser.current_url}")
 
-        # Voltar para a aba principal
-        browser.switch_to_tab("main")
-        print(f"De volta à aba 'main'. Título: {browser._driver.title}")
+        # Para voltar para a aba principal, basta usar seu objeto
+        main_tab.switch_to()
+        print(f"De volta à aba '{main_tab.name}'. URL atual: {browser.current_url}")
 
-        # Fechar a aba de relatórios
-        browser.close_tab("relatorios")
+        # Para listar todas as abas abertas:
+        print(f"Nomes das abas abertas: {browser.list_tab_names()}")
+
+        # Fechar a aba de relatórios diretamente pelo seu objeto
+        reports_tab.close()
         print("Aba 'relatorios' fechada.")
+
+        # O foco do navegador volta para a aba anterior ('main') automaticamente.
+        print(f"Aba ativa agora: '{browser.current_tab.name}'")
+
 except Exception as e:
     print(f"ERRO: {e}")
 ```
@@ -93,13 +106,11 @@ except Exception as e:
 Use o comando `browser-core` no seu terminal para tarefas de manutenção.
 
 * **Listar perfis:**
-
     ```bash
     browser-core profiles list
     ```
 
 * **Atualizar um driver:**
-
     ```bash
     browser-core drivers update chrome
     ```
@@ -113,14 +124,12 @@ Se pretende contribuir para o `browser-core`, siga estes passos para configurar 
 ### 1. Configuração do Ambiente
 
 1. Clone o repositório:
-
    ```bash
    git clone https://github.com/gabrielbarbosel/browser-core.git
    cd browser-core
    ```
 
 2. Crie e ative um ambiente virtual:
-
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # No Linux/macOS
@@ -128,7 +137,6 @@ Se pretende contribuir para o `browser-core`, siga estes passos para configurar 
    ```
 
 3. Instale o projeto em modo "editável":
-
    ```bash
    pip install -e .
    ```
