@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: commitlint
     steps:
-      - uses: buluma/conventional-pr-labels@v1
+      - name: Label PR based on conventional commit
+        uses: TimonVS/pr-labeler-action@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          config_file: '.github/pr-labels.yml'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/pr-labels.yml
