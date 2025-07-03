@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 
 # Importa as estruturas de configuração individuais do nosso arquivo de tipos.
 # Isso garante que estamos a reutilizar os contratos já definidos.
+from .utils import deep_merge_dicts
 from .types import (
     BrowserConfig,
     LoggingConfig,
@@ -110,3 +111,22 @@ def default_settings() -> Settings:
         },
     }
     return settings
+
+
+def custom_settings(overrides: Settings) -> Settings:
+    """
+    Cria uma configuração completa mesclando um objeto de substituição
+    com as configurações padrão.
+
+    Isso permite especificar apenas as configurações que você deseja alterar,
+    semelhante a uma operação de atualização em um banco de dados.
+
+    Args:
+        overrides: Um dicionário contendo apenas as chaves e valores
+                   que você deseja modificar.
+
+    Returns:
+        Um objeto de configuração completo e pronto para ser usado.
+    """
+    base = default_settings()
+    return deep_merge_dicts(base, overrides)
