@@ -75,17 +75,17 @@ try:
     with Browser("multi_tab_user", BrowserType.CHROME) as browser:
         # A primeira aba é sempre a 'main'. Podemos obter seu objeto de controle.
         main_tab = browser.current_tab
-        main_tab.navigate_to("[https://www.google.com](https://www.google.com)")
-        print(f"Aba '{main_tab.name}' navegou para: {browser.current_url}")
+        main_tab.navigate_to("https://www.google.com")
+        print(f"Aba '{main_tab.name}' navegou para: {browser._driver.current_url}")
 
         # Abrir uma nova aba para relatórios. O método já retorna o objeto 'Tab'.
         reports_tab = browser.open_tab(name="relatorios")
-        reports_tab.navigate_to("[https://www.bing.com](https://www.bing.com)")
-        print(f"Aba '{reports_tab.name}' navegou para: {browser.current_url}")
+        reports_tab.navigate_to("https://www.bing.com")
+        print(f"Aba '{reports_tab.name}' navegou para: {browser._driver.current_url}")
 
         # Para voltar para a aba principal, basta usar seu objeto
         main_tab.switch_to()
-        print(f"De volta à aba '{main_tab.name}'. URL atual: {browser.current_url}")
+        print(f"De volta à aba '{main_tab.name}'. URL atual: {browser._driver.current_url}")
 
         # Para listar todas as abas abertas:
         print(f"Nomes das abas abertas: {browser.list_tab_names()}")
