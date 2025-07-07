@@ -32,5 +32,12 @@ class Tab:
         """Fecha esta aba."""
         self._browser.close_tab(self.name)
 
+    @property
+    def current_url(self) -> str:
+        """Retorna a URL atual desta aba."""
+        self.switch_to()  # Garante que o foco está na aba correta
+        # noinspection PyProtectedMember
+        return self._browser._driver.current_url
+
     def __repr__(self) -> str:
         return f"<Tab name='{self.name}' handle='{self.handle}'>"

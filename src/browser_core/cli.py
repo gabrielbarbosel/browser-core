@@ -39,7 +39,6 @@ def update(browser_name: str):
     cli_logger.info(f"A forçar a atualização para o driver do '{browser_name}'...")
     try:
         browser_type = BrowserType(browser_name)
-        # Instancia o DriverManager para aceder à sua lógica de download/cache.
         manager = DriverManager(logger=cli_logger)
         manager.create_driver(browser_type, browser_config={"headless": True})
         cli_logger.info(f"Driver do '{browser_name}' verificado e/ou atualizado com sucesso.")
@@ -59,10 +58,12 @@ def profiles():
 def list_profiles():
     """Lista todos os perfis de utilizador existentes."""
     settings = default_settings()
-    profiles_dir = Path(settings["session_output_dir"]) / "profiles"
+    # CORREÇÃO: Lê o caminho a partir do dicionário 'paths'
+    paths_config = settings.get("paths", {})
+    profiles_dir = Path(paths_config.get("profiles_base_dir"))
 
     if not profiles_dir.exists() or not any(profiles_dir.iterdir()):
-        click.echo("Nenhum perfil encontrado.")
+        click.echo(f"Nenhum perfil encontrado em '{profiles_dir}'.")
         return
 
     click.echo(f"Perfis encontrados em: {profiles_dir}")
@@ -75,27 +76,43 @@ def list_profiles():
 @click.option(
     "--path",
     "custom_path",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    help="Caminho para o diretório de output, se for diferente do padrão.",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Ignora os caminhos padrão e apaga o diretório especificado.",
 )
 def clean(custom_path: Path):
     """Remove todos os diretórios de perfis e sessões."""
     settings = default_settings()
-    output_dir = custom_path or Path(settings["session_output_dir"])
+    paths_config = settings.get("paths", {})
 
-    if not output_dir.exists() or not any(output_dir.iterdir()):
-        click.echo(f"Diretório de output '{output_dir}' está vazio ou não existe. Nada a limpar.")
+    # Obtém os dois diretórios relevantes das configurações
+    dirs_to_clean = []
+    if custom_path:
+        # Se um caminho personalizado for fornecido, limpa apenas ele
+        dirs_to_clean.append(custom_path)
+        click.echo(f"Alvo da limpeza: diretório personalizado '{custom_path}'")
+    else:
+        # Caso contrário, usa os caminhos padrão de perfis e sessões
+        profiles_base_dir = Path(paths_config.get("profiles_base_dir"))
+        sessions_base_dir = Path(paths_config.get("sessions_base_dir"))
+        dirs_to_clean.extend([profiles_base_dir, sessions_base_dir])
+        click.echo(f"Alvos da limpeza: '{profiles_base_dir}' e '{sessions_base_dir}'")
+
+    found_dirs = [d for d in dirs_to_clean if d.exists() and any(d.iterdir())]
+
+    if not found_dirs:
+        click.echo("Nenhum diretório com conteúdo encontrado. Nada a limpar.")
         return
 
     if click.confirm(
-            f"Tem a certeza de que quer apagar TODO o conteúdo de '{output_dir}'? Esta ação é irreversível."
+            f"Tem a certeza de que quer apagar TODO o conteúdo dos diretórios acima? Esta ação é irreversível."
     ):
-        try:
-            shutil.rmtree(output_dir)
-            click.echo(f"Diretório '{output_dir}' limpo com sucesso.")
-        except OSError as e:
-            cli_logger.error(f"Não foi possível apagar o diretório '{output_dir}': {e}")
-            click.echo(f"Erro: Não foi possível apagar o diretório. Verifique as permissões.")
+        for dir_path in found_dirs:
+            try:
+                shutil.rmtree(dir_path)
+                click.echo(f"Diretório '{dir_path}' limpo com sucesso.")
+            except OSError as e:
+                cli_logger.error(f"Não foi possível apagar o diretório '{dir_path}': {e}")
+                click.echo(f"Erro: Não foi possível apagar '{dir_path}'. Verifique as permissões.")
 
 
 if __name__ == "__main__":

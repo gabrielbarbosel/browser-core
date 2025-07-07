@@ -14,7 +14,7 @@ from selenium.common.exceptions import WebDriverException
 from .drivers.manager import DriverManager
 from .exceptions import BrowserManagementError, PageLoadError
 from .profile import UserProfileManager
-from .selectors.manager import SelectorDefinition
+from .selectors.manager import SelectorDefinition, SelectorManager
 from .session import SessionManager
 from .settings import Settings, default_settings
 from .types import BrowserType, WebDriverProtocol
@@ -55,8 +55,8 @@ class Browser:
         self._is_started = False
 
         profile_settings = self.settings.get("profile", {})
-        session_output_dir = self.settings.get("session_output_dir", "./browser_core_output")
-        profiles_base_dir = Path(session_output_dir) / "profiles"
+        paths_config = self.settings.get("paths", {})
+        profiles_base_dir = Path(paths_config.get("profiles_base_dir", "./browser-core-output/profiles"))
 
         self.profile_manager = UserProfileManager(
             username=username,
