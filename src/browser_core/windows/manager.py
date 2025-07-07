@@ -5,6 +5,7 @@
 # do navegador.
 
 from typing import Dict, Optional, List, TYPE_CHECKING
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -34,6 +35,7 @@ class WindowManager:
                               execução de scripts.
         """
         self._browser = browser_instance
+        # noinspection PyProtectedMember
         self._driver = browser_instance._driver
         self._logger = browser_instance.logger
         # O dicionário agora armazena o nome da aba e o objeto Tab correspondente

@@ -68,12 +68,14 @@ class Browser:
             profile_manager=self.profile_manager,
             logging_settings=self.settings.get("logging", {}),
             snapshot_settings=self.settings.get("snapshots", {}),
+            session_id=self.settings.get("paths", {}).get("session_id", None),
         )
         self.driver_manager = DriverManager(logger=self.session_manager.logger)
         self.selector_manager = SelectorManager(logger=self.session_manager.logger)
 
         self.window_manager: Optional[WindowManager] = None
         self.logger = self.session_manager.logger
+        self.logger.browser_instance = self # Fornece ao logger acesso ao estado do browser (ex: abas)
         atexit.register(self._cleanup)
         self.logger.info("Instância do Browser criada e pronta para iniciar.")
 
