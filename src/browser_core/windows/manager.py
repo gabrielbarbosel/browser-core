@@ -5,6 +5,8 @@
 # do navegador.
 
 from typing import Dict, Optional, List, TYPE_CHECKING
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 from ..exceptions import BrowserManagementError
 from .tab import Tab  # Importa a nova classe que representa uma aba
@@ -80,15 +82,17 @@ class WindowManager:
             O objeto Tab que controla a nova aba.
         """
         self._logger.info("Abrindo uma nova aba...")
-        previous_handles = set(self.known_handles)
+        previous_handles_count = len(self._driver.window_handles)
         self._driver.execute_script("window.open('');")
 
-        # Espera um momento para garantir que o novo handle apareça
-        import time
-        time.sleep(0.2)
+        try:
+            wait = WebDriverWait(self._driver, timeout=10)  # Espera até 10 segundos
+            wait.until(EC.number_of_windows_to_be(previous_handles_count + 1))
+        except TimeoutException:
+            raise BrowserManagementError("A nova aba não abriu dentro do tempo esperado.")
 
-        current_handles = set(self._driver.window_handles)
-        new_handle = (current_handles - previous_handles).pop()
+        # Identifica o handle da nova aba
+        new_handle = [h for h in self._driver.window_handles if h not in self.known_handles][0]
 
         if name:
             tab_name = name
@@ -102,7 +106,6 @@ class WindowManager:
         self._tabs[tab_name] = new_tab
 
         self._logger.info(f"Nova aba aberta e nomeada como '{tab_name}'.")
-        # Já muda o foco para a nova aba e a retorna
         new_tab.switch_to()
         return new_tab
 
