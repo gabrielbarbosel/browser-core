@@ -108,6 +108,8 @@ def default_settings() -> Settings:
             # Se não for fornecido, um ID será gerado automaticamente.
             # Ex: "user_A:minha_tarefa_123"
             "session_id": None,
+            "profile_path": None,
+            "session_path": None,
         },
     }
     return settings
