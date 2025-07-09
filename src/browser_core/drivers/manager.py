@@ -1,32 +1,29 @@
 # Define o sistema de gestão de WebDrivers.
 #
-# Este módulo fornece uma classe, `DriverManager`, que lida com o download
-# automático, cache e configuração de WebDrivers para múltiplos navegadores,
-# desacoplando o resto do framework dos detalhes de implementação de
-# cada driver específico.
+# Este módulo fornece a classe `DriverManager`, que lida com o download
+# automático, versionamento explícito (incluindo 'latest'), cache e
+# configuração de WebDrivers, desacoplando o resto do framework dos
+# detalhes de implementação de cada driver.
 
+import inspect
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Dict
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.firefox.service import Service as FirefoxService
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
 
-from ..exceptions import BrowserManagementError, ConfigurationError
-from ..types import BrowserConfig, BrowserType, FilePath, LoggerProtocol
+from ..exceptions import DriverError, ConfigurationError
+from ..types import BrowserConfig, DriverInfo, FilePath, LoggerProtocol, BrowserType, WebDriverProtocol
 
 
 class DriverManager:
     """
-    Gere o ciclo de vida de instâncias de WebDriver.
+    Gere o ciclo de vida de instâncias de WebDriver com versionamento explícito.
 
-    Abstrai a complexidade de obter o executável do driver correto,
-    gere um cache global para economizar tempo e largura de banda, e
-    configura as opções específicas de cada navegador.
+    Abstrai a complexidade de obter o executável do driver correto, gere um
+    cache global e configura as opções de inicialização de forma inteligente.
     """
 
     def __init__(
@@ -36,121 +33,119 @@ class DriverManager:
     ):
         """
         Inicializa o gestor de drivers.
-
-        Args:
-            logger: A instância do logger para registar as operações.
-            driver_cache_dir: O diretório para armazenar em cache os drivers.
-                              Se não for fornecido, um diretório padrão será usado.
         """
         self.logger = logger
-        # Define o diretório de cache padrão para o nosso projeto.
         if driver_cache_dir:
             self.driver_cache_dir = Path(driver_cache_dir)
+            self._ensure_cache_dir()
         else:
-            self.driver_cache_dir = Path.home() / ".browser-core" / "drivers"
+            self.driver_cache_dir = None
+            self.logger.info("Nenhum 'driver_cache_dir' fornecido. A usar o diretório de cache padrão do sistema.")
 
-        self._ensure_cache_dir()
+        # Mapa de despacho para as funções de criação de driver (Padrão Factory)
+        self._driver_factories: Dict[str, Callable] = {
+            BrowserType.CHROME.value: self._create_chrome_driver,
+            # Futuramente, outros drivers podem ser adicionados aqui:
+            # BrowserType.FIREFOX.value: self._create_firefox_driver,
+        }
 
     def _ensure_cache_dir(self) -> None:
-        # Garante que o diretório de cache para os drivers exista.
+        """Garante que o diretório de cache para os drivers exista."""
         try:
             self.driver_cache_dir.mkdir(parents=True, exist_ok=True)
         except (OSError, PermissionError) as e:
             self.logger.warning(
                 f"Não foi possível criar ou aceder ao diretório de cache de drivers: {self.driver_cache_dir}. "
-                f"A usar o diretório temporário do sistema. Erro: {e}"
+                f"A usar o diretório padrão do sistema. Erro: {e}"
             )
-            # Como fallback, não define um caminho, deixando o webdriver-manager usar o seu padrão.
             self.driver_cache_dir = None
 
     def create_driver(
             self,
-            browser_type: BrowserType,
+            driver_info: DriverInfo,
             browser_config: BrowserConfig,
-            user_profile_dir: Optional[FilePath] = None,
-    ) -> Any:
+            user_profile_dir: FilePath,
+    ) -> WebDriverProtocol:
         """
-        Cria e retorna uma instância de WebDriver configurada.
-
-        Este método determina qual navegador criar, configura as suas opções
-        específicas (como modo headless e perfil de utilizador) e gere
-        o download e cache do driver correspondente.
-
-        Args:
-            browser_type: O tipo de navegador a ser criado (ex: BrowserType.CHROME).
-            browser_config: O dicionário de configuração para o navegador.
-            user_profile_dir: O caminho para o diretório de perfil de utilizador a ser usado.
-
-        Returns:
-            Uma instância do WebDriver iniciada e configurada.
+        Cria e retorna uma instância de WebDriver com base no nome do navegador.
         """
-        self.logger.info(f"A criar driver para o navegador: {browser_type.value}")
+        browser_name = driver_info.get("name", "").lower()
+        requested_version = driver_info.get("version")
+        self.logger.info(
+            f"A criar driver para o navegador: {browser_name}, versão solicitada: {requested_version}"
+        )
+
+        factory = self._driver_factories.get(browser_name)
+        if not factory:
+            raise ConfigurationError(f"Tipo de navegador não suportado: {browser_name}")
+
         try:
-            if browser_type == BrowserType.CHROME:
-                return self._create_chrome_driver(browser_config, user_profile_dir)
-            elif browser_type == BrowserType.FIREFOX:
-                return self._create_firefox_driver(browser_config, user_profile_dir)
-            else:
-                raise ConfigurationError(f"Tipo de navegador não suportado: {browser_type.value}")
+            return factory(requested_version, browser_config, user_profile_dir)
         except Exception as e:
-            self.logger.error(f"Falha ao criar o driver para {browser_type.value}: {e}", exc_info=True)
-            raise BrowserManagementError(
-                f"Falha ao criar o driver para {browser_type.value}", original_error=e
-            )
+            self.logger.error(f"Erro inesperado ao criar o driver para {browser_name}: {e}", exc_info=True)
+            raise DriverError(f"Erro inesperado ao criar o driver para {browser_name}", original_error=e)
 
     def _create_chrome_driver(
             self,
+            requested_version: str,
             config: BrowserConfig,
-            profile_dir: Optional[FilePath],
+            profile_dir: FilePath,
     ) -> webdriver.Chrome:
-        # Cria uma instância específica do ChromeDriver.
+        """Cria uma instância do ChromeDriver e retorna o objeto do driver."""
         options = ChromeOptions()
         self._apply_common_chrome_options(options, config, profile_dir)
 
-        self.logger.debug("A verificar o driver para o Chrome (a usar cache se disponível)...")
-        # O 'install()' do ChromeDriverManager gere o download e o cache automaticamente.
-        driver_path = ChromeDriverManager(path=str(self.driver_cache_dir) if self.driver_cache_dir else None).install()
+        kwargs_para_manager = {}
+        if requested_version.lower() == "latest":
+            self.logger.debug("A procurar a versão mais recente do ChromeDriver compatível...")
+        else:
+            self.logger.debug(f"A garantir que a versão {requested_version} do ChromeDriver esteja disponível...")
+            init_params = inspect.signature(ChromeDriverManager).parameters
+            possible_args = {"version": requested_version, "driver_version": requested_version}
+            kwargs_para_manager = {key: value for key, value in possible_args.items() if key in init_params}
+
+        if self.driver_cache_dir:
+            kwargs_para_manager["path"] = str(self.driver_cache_dir)
+
+        manager = ChromeDriverManager(**kwargs_para_manager)
+        driver_path = manager.install()
+
+        installed_driver_version = Path(driver_path).parent.name
+        self.logger.info(f"A iniciar ChromeDriver v{installed_driver_version} a partir de: {driver_path}")
 
         service = ChromeService(executable_path=driver_path)
-        self.logger.info(f"A iniciar ChromeDriver a partir de: {driver_path}")
-        return webdriver.Chrome(service=service, options=options)
+        driver = webdriver.Chrome(service=service, options=options)
+
+        return driver
 
     def _apply_common_chrome_options(
-            self, options: ChromeOptions, config: BrowserConfig, profile_dir: Optional[FilePath]
+            self, options: ChromeOptions, config: BrowserConfig, profile_dir: FilePath
     ) -> None:
-        # Centraliza a aplicação de todas as opções de configuração do Chrome.
+        """Centraliza a aplicação de todas as opções de configuração do Chrome."""
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option("useAutomationExtension", False)
 
+        if config.get("user_agent"):
+            self.logger.debug(f"A usar User-Agent fornecido na configuração: {config['user_agent']}")
+            options.add_argument(f"--user-agent={config['user_agent']}")
+        else:
+            self.logger.debug("Nenhum User-Agent customizado fornecido. O padrão do WebDriver será usado.")
+
         if config.get("headless", True):
             options.add_argument("--headless=new")
         if config.get("incognito"):
+            self.logger.warning(
+                "A opção 'incognito' está ativa, o perfil materializado pode não ser usado completamente.")
             options.add_argument("--incognito")
         if config.get("disable_gpu", True):
             options.add_argument("--disable-gpu")
 
-        # Argumentos essenciais para execução em ambientes containerizados (Docker).
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-
-        # Configura o perfil de utilizador para persistência de sessão.
-        if profile_dir:
-            options.add_argument(f"--user-data-dir={profile_dir}")
-
+        options.add_argument(f"--user-data-dir={profile_dir}")
         window_size = f"{config.get('window_width', 1920)},{config.get('window_height', 1080)}"
         options.add_argument(f"--window-size={window_size}")
 
-        if config.get("user_agent"):
-            options.add_argument(f"--user-agent={config['user_agent']}")
-
         for arg in config.get("additional_args", []):
             options.add_argument(arg)
-
-    def _create_firefox_driver(
-            self,
-            config: BrowserConfig,
-            profile_dir: Optional[FilePath],
-    ) -> webdriver.Firefox:
-        # Implementação para o GeckoDriver (Firefox), similar à do Chrome.
-        raise NotImplementedError("A criação do driver para Firefox ainda não foi implementada.")
