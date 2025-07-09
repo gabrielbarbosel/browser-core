@@ -26,7 +26,7 @@ jobs:
           commit_sha: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Show new tag
-        run:
+        run: |
           echo "Nova tag: ${{ steps.tag_version.outputs.new_tag }}"
 
       - name: Update version in pyproject.toml
