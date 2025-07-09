@@ -1,0 +1,40 @@
+name: Create Release Tag
+
+on:
+  pull_request:
+    types: [ closed ]
+    branches: [ master ]
+
+jobs:
+  tag-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Bump version e determinar a próxima tag
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_release_rules: "feat:minor,fix:patch,perf:patch,refactor:patch,build:patch,ci:patch,chore:patch,docs:patch,style:patch,test:patch"
+
+      - name: Criar e empurrar a nova tag Git
+        run: |
+          echo "Nova tag a ser criada: ${{ steps.tag_version.outputs.new_tag }}"
+          # Configura o Git para o bot das actions
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Cria a tag no commit que acabamos de analisar
+          git tag ${{ steps.tag_version.outputs.new_tag }} -a -m "Release ${{ steps.tag_version.outputs.new_tag }}"
+          
+          # Empurra a nova tag para o repositório. É esta ação
+          # que irá acionar o segundo workflow.
+          git push origin ${{ steps.tag_version.outputs.new_tag }}

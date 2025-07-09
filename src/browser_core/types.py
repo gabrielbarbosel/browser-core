@@ -25,6 +25,16 @@ SelectorValue = str
 ElementIndex = int
 """Representa o índice de um elemento em uma lista de elementos."""
 
+# --- Novos Tipos para a Arquitetura ---
+SnapshotId = str
+"""Representa o identificador único de um snapshot (ex: 'chrome_115_logged_in')."""
+
+ObjectHash = str
+"""Representa o hash SHA256 do conteúdo de um arquivo."""
+
+RelativePath = str
+"""Representa o caminho relativo de um arquivo dentro de um perfil de navegador."""
+
 
 # ==============================================================================
 # --- Enums para Valores Controlados ---
@@ -59,17 +69,26 @@ class LogLevel(Enum):
     CRITICAL = "CRITICAL"
 
 
+class TaskStatus(Enum):
+    """Define os possíveis status de uma tarefa processada pelo WorkforceManager."""
+    SUCCESS = "SUCCESS"
+    SETUP_FAILED = "ERRO_SETUP"
+    TASK_FAILED = "ERRO_TAREFA"
+
+
 # ==============================================================================
 # --- Dicionários de Configuração (TypedDicts) ---
 # ==============================================================================
 
 class BrowserConfig(TypedDict, total=False):
-    """Define a estrutura para as configurações do navegador."""
+    """
+    Define a estrutura para as configurações do navegador que um Worker pode usar.
+    """
     headless: bool
     window_width: int
     window_height: int
     user_agent: Optional[str]
-    incognito: bool
+    incognito: bool  # Nota: Incognito pode entrar em conflito com perfis materializados.
     disable_gpu: bool
     additional_args: List[str]
 
@@ -90,97 +109,58 @@ class LoggingConfig(TypedDict, total=False):
     mask_credentials: bool
 
 
-class SnapshotConfig(TypedDict, total=False):
-    """Define a estrutura para as configurações de snapshots."""
-    enabled: bool
-    on_error: bool
-    include_screenshot: bool
-    include_dom: bool
-    include_browser_logs: bool
-
-
-class ProfileConfig(TypedDict, total=False):
-    """Define a estrutura para as configurações de perfis de usuário."""
-    auto_cleanup_days: int
-    persistent_browser_profile: bool
-
-
 class PathsConfig(TypedDict, total=False):
     """
     Define a estrutura para os caminhos de saída personalizáveis.
-    Permite separar perfis, sessões e outros artefatos.
     """
-    profiles_base_dir: FilePath
-    sessions_base_dir: FilePath
-    # Permite injetar um caminho de perfil ou sessão específico
-    profile_path: FilePath
-    session_path: FilePath
-    session_id: str
-
-
-class SessionPathConfig(TypedDict):
-    """Define a estrutura de diretórios para uma sessão individual."""
-    session_dir: Path
-    logs_dir: Path
-    snapshots_dir: Path
-    screenshots_dir: Path
-    browser_profile_dir: Optional[Path]
-
-
-class ProfilePathConfig(TypedDict):
-    """Define a estrutura de diretórios para um perfil de usuário."""
-    profile_dir: Path
-    sessions_dir: Path
+    # Diretório base para todos os artefatos
+    output_dir: FilePath
+    # Os caminhos abaixo podem ser sobrescritos individualmente.
+    # Se não forem fornecidos, serão derivados do 'output_dir'.
+    # Diretório para armazenar todos os objetos de arquivo por hash.
+    objects_dir: FilePath
+    # Diretório para armazenar os metadados .json dos snapshots.
+    snapshots_metadata_dir: FilePath
+    # Diretório base para os logs de tarefas executadas pelos workers.
+    tasks_logs_dir: FilePath
+    # Diretório para o cache dos executáveis dos WebDrivers.
+    driver_cache_dir: FilePath
 
 
 # ==============================================================================
-# --- Estruturas de Dados (TypedDicts) ---
+# --- Estruturas de Dados da Arquitetura (TypedDicts) ---
 # ==============================================================================
 
-class SnapshotData(TypedDict, total=False):
-    """Define a estrutura de dados para um snapshot."""
-    name: str
-    timestamp: str
-    url: str
-    screenshot_path: Optional[str]
-    dom_path: Optional[str]
-    browser_logs: List[Dict[str, Any]]
+class SnapshotDelta(TypedDict):
+    """
+    Define um 'delta', mapeando caminhos relativos de arquivos para seus hashes.
+    Representa as mudanças entre um snapshot e seu pai.
+    Ex: {"Default/Cookies": "hash123", "Extensions/ublock/manifest.json": "hash456"}
+    """
+    # Esta estrutura permite chaves dinâmicas do tipo RelativePath -> ObjectHash,
+    # por isso não definimos campos estáticos.
+    pass
 
 
-class SessionData(TypedDict, total=False):
-    """Define a estrutura de dados principal para uma sessão."""
-    session_id: str
-    username: str
-    profile_id: str
-    start_time: str
-    end_time: Optional[str]
-    status: str
-    snapshots: List[SnapshotData]
-    metadata: Dict[str, Any]
+class DriverInfo(TypedDict):
+    """Metadados sobre a versão do WebDriver vinculada a uma cadeia de snapshots."""
+    name: str  # Ex: "chrome"
+    version: str  # Ex: "115.0.5790.170"
 
 
-class ProfileData(TypedDict, total=False):
-    """Define a estrutura de dados para os metadados de um perfil."""
-    profile_id: str
-    username: str
+class SnapshotData(TypedDict):
+    """Define a estrutura completa de metadados para um snapshot, salva em JSON."""
+    id: SnapshotId
+    parent_id: Optional[SnapshotId]
+    base_driver: DriverInfo
     created_at: str
-    last_accessed: str
+    delta: Dict[RelativePath, ObjectHash]
+    metadata: Dict[str, Any]
 
 
 # ==============================================================================
 # --- Protocolos para Inversão de Dependência (SOLID) ---
 # ==============================================================================
-
-class UserProfileProtocol(Protocol):
-    """Define o contrato para um gestor de perfis de utilizador."""
-
-    @property
-    def profile_id(self) -> str: ...
-
-    def create_session_directory(self, session_id: str) -> Path: ...
-
-    def get_browser_profile_path(self) -> Optional[Path]: ...
-
 
 class WebDriverProtocol(Protocol):
     """Define o contrato mínimo que um objeto de WebDriver deve seguir."""
@@ -194,9 +174,19 @@ class WebDriverProtocol(Protocol):
     @property
     def page_source(self) -> str: ...
 
+    @property
+    def current_window_handle(self) -> str: ...
+
+    @property
+    def window_handles(self) -> List[str]: ...
+
     def get(self, url: str) -> None: ...
 
     def quit(self) -> None: ...
+
+    def close(self) -> None: ...
+
+    def switch_to(self) -> Any: ...
 
     def find_element(self, by: str, value: str) -> Any: ...
 
