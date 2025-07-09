@@ -32,6 +32,7 @@ jobs:
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_types: feat,fix,refactor,perf
 
       - name: Atualizar versão no pyproject.toml
         run: |
