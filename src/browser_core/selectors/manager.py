@@ -106,14 +106,19 @@ class SelectorManager:
                 except (NoSuchElementException, TimeoutException) as fallback_error:
                     raise ElementNotFoundError(
                         "Elemento não encontrado com seletor primário nem com fallback.",
-                        selector=f"Primary: {definition.primary}, Fallback: {definition.fallback}",
-                        timeout_ms=definition.timeout_ms,
+                        context={
+                            "primary_selector": definition.primary,
+                            "fallback_selector": definition.fallback,
+                            "timeout_ms": definition.timeout_ms
+                        },
                         original_error=fallback_error,
                     )
             raise ElementNotFoundError(
                 f"Elemento não encontrado com seletor: '{definition.primary}'",
-                selector=definition.primary,
-                timeout_ms=definition.timeout_ms,
+                context={
+                    "selector": definition.primary,
+                    "timeout_ms": definition.timeout_ms
+                },
             )
 
     def find_elements(self, driver: WebDriverProtocol, definition: SelectorDefinition) -> List[Any]:
