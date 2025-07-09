@@ -31,9 +31,9 @@ jobs:
 
       - name: Update version in pyproject.toml
         run: |
-          TAG_VERSION=${{ steps.tag_version.outputs.new_tag#v }}
-          # substitui mesmo com indentação
-          sed -i -E 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*".*"/version = "'$TAG_VERSION'"/' pyproject.toml
+          TAG_VERSION="${{ steps.tag_version.outputs.new_tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"   # remove prefixo v
+          sed -i -E 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*".*"/version = "'"$TAG_VERSION"'"/' pyproject.toml
 
       - name: Commit version bump
         run: |
