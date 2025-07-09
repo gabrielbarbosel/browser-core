@@ -1,118 +1,138 @@
-# Define a Interface de Linha de Comando (CLI) para o browser-core.
-#
-# Esta ferramenta permite gerir o ecossistema do browser-core, como
-# a atualização de drivers e a manutenção de perfis de utilizador,
-# diretamente a partir do terminal.
-
+import json
 import shutil
+from importlib import metadata
 from pathlib import Path
 
 import click
 
-from .drivers import DriverManager
-from .logging import setup_session_logger
+from .exceptions import ConfigurationError, SnapshotError, StorageEngineError
 from .settings import default_settings
-from .types import BrowserType
+from .snapshots.manager import SnapshotManager
+from .storage.engine import StorageEngine
+from .utils import safe_json_dumps
 
-# Cria um logger simples para as operações da CLI.
-# Usamos 'None' para session_id e um nome genérico para o utilizador.
-cli_logger = setup_session_logger("cli", "cli_user", Path.cwd(), {"to_file": False})
+
+class CliContext:
+    """Objeto para carregar e passar dependências para os comandos da CLI."""
+
+    def __init__(self):
+        try:
+            self.settings = default_settings()
+            self.paths = self.settings.get("paths", {})
+
+            # Garante que os caminhos são objetos Path
+            self.objects_dir = Path(self.paths.get("objects_dir"))
+            self.snapshots_dir = Path(self.paths.get("snapshots_metadata_dir"))
+
+            storage_engine = StorageEngine(objects_dir=self.objects_dir)
+            self.snapshot_manager = SnapshotManager(
+                snapshots_metadata_dir=self.snapshots_dir,
+                storage_engine=storage_engine
+            )
+        except (SnapshotError, StorageEngineError, ConfigurationError) as e:
+            click.echo(f"ERRO: Falha ao inicializar os gestores do browser-core: {e}", err=True)
+            exit(1)
 
 
 @click.group()
-def cli():
-    """Interface de Linha de Comando para gerir o browser-core."""
-    pass
-
-
-# --- Grupo de Comandos para Drivers ---
-@cli.group()
-def drivers():
-    """Comandos para gerir os WebDrivers."""
-    pass
-
-
-@drivers.command()
-@click.argument("browser_name", type=click.Choice([b.value for b in BrowserType]))
-def update(browser_name: str):
-    """Força a verificação e atualização do driver para um navegador."""
-    cli_logger.info(f"A forçar a atualização para o driver do '{browser_name}'...")
-    try:
-        browser_type = BrowserType(browser_name)
-        manager = DriverManager(logger=cli_logger)
-        manager.create_driver(browser_type, browser_config={"headless": True})
-        cli_logger.info(f"Driver do '{browser_name}' verificado e/ou atualizado com sucesso.")
-    except Exception as e:
-        cli_logger.error(f"Ocorreu um erro ao atualizar o driver: {e}", exc_info=True)
-        click.echo(f"Erro ao atualizar o driver: {e}")
-
-
-# --- Grupo de Comandos para Perfis ---
-@cli.group()
-def profiles():
-    """Comandos para gerir os perfis de utilizador."""
-    pass
-
-
-@profiles.command(name="list")
-def list_profiles():
-    """Lista todos os perfis de utilizador existentes."""
-    settings = default_settings()
-    # CORREÇÃO: Lê o caminho a partir do dicionário 'paths'
-    paths_config = settings.get("paths", {})
-    profiles_dir = Path(paths_config.get("profiles_base_dir"))
-
-    if not profiles_dir.exists() or not any(profiles_dir.iterdir()):
-        click.echo(f"Nenhum perfil encontrado em '{profiles_dir}'.")
-        return
-
-    click.echo(f"Perfis encontrados em: {profiles_dir}")
-    for profile_path in profiles_dir.iterdir():
-        if profile_path.is_dir():
-            click.echo(f"- {profile_path.name}")
-
-
-@profiles.command()
-@click.option(
-    "--path",
-    "custom_path",
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Ignora os caminhos padrão e apaga o diretório especificado.",
+@click.version_option(
+    version=metadata.version("browser-core"),
+    prog_name="browser-core"
 )
-def clean(custom_path: Path):
-    """Remove todos os diretórios de perfis e sessões."""
-    settings = default_settings()
-    paths_config = settings.get("paths", {})
+@click.pass_context
+def cli(ctx: click.Context):
+    """Interface de Linha de Comando para gerir o browser-core."""
+    # Cria o objeto de contexto e o anexa ao Click para que os subcomandos possam usá-lo
+    ctx.obj = CliContext()
 
-    # Obtém os dois diretórios relevantes das configurações
-    dirs_to_clean = []
-    if custom_path:
-        # Se um caminho personalizado for fornecido, limpa apenas ele
-        dirs_to_clean.append(custom_path)
-        click.echo(f"Alvo da limpeza: diretório personalizado '{custom_path}'")
-    else:
-        # Caso contrário, usa os caminhos padrão de perfis e sessões
-        profiles_base_dir = Path(paths_config.get("profiles_base_dir"))
-        sessions_base_dir = Path(paths_config.get("sessions_base_dir"))
-        dirs_to_clean.extend([profiles_base_dir, sessions_base_dir])
-        click.echo(f"Alvos da limpeza: '{profiles_base_dir}' e '{sessions_base_dir}'")
 
-    found_dirs = [d for d in dirs_to_clean if d.exists() and any(d.iterdir())]
+# --- Grupo de Comandos para Snapshots ---
+@cli.group()
+def snapshots():
+    """Comandos para gerir os snapshots de estado do navegador."""
+    pass
 
-    if not found_dirs:
-        click.echo("Nenhum diretório com conteúdo encontrado. Nada a limpar.")
+
+@snapshots.command(name="list")
+@click.pass_context
+def list_snapshots(ctx: click.Context):
+    """Lista todos os snapshots disponíveis."""
+    snapshots_dir = ctx.obj.snapshots_dir
+
+    if not snapshots_dir.exists() or not any(snapshots_dir.glob('*.json')):
+        click.echo(f"Nenhum snapshot encontrado em '{snapshots_dir}'.")
         return
 
-    if click.confirm(
-            f"Tem a certeza de que quer apagar TODO o conteúdo dos diretórios acima? Esta ação é irreversível."
-    ):
-        for dir_path in found_dirs:
+    click.echo(f"Snapshots encontrados em: {snapshots_dir}")
+    for snapshot_file in sorted(snapshots_dir.glob('*.json')):
+        try:
+            data = json.loads(snapshot_file.read_text(encoding="utf-8"))
+            parent = data.get('parent_id', '---')
+            driver = data.get('base_driver', {}).get('name', 'N/A')
+            version = data.get('base_driver', {}).get('version', 'N/A')
+            click.echo(
+                f"- ID: {data['id']:<30} | Pai: {parent:<30} | Driver: {driver} v{version}"
+            )
+        except (json.JSONDecodeError, KeyError):
+            click.echo(f"[AVISO] Arquivo de snapshot mal formado ou incompleto: {snapshot_file.name}", err=True)
+
+
+@snapshots.command(name="inspect")
+@click.argument("snapshot_id")
+@click.pass_context
+def inspect_snapshot(ctx: click.Context, snapshot_id: str):
+    """Exibe os metadados completos de um snapshot específico."""
+    snapshot_manager = ctx.obj.snapshot_manager
+    data = snapshot_manager.get_snapshot_data(snapshot_id)
+    if not data:
+        click.echo(f"Erro: Snapshot com ID '{snapshot_id}' não encontrado.", err=True)
+        return
+
+    click.echo(safe_json_dumps(data, indent=2))
+
+
+# --- Grupo de Comandos para o Armazenamento ---
+@cli.group()
+def storage():
+    """Comandos para gerir o armazenamento de objetos e caches."""
+    pass
+
+
+@storage.command(name="clean")
+@click.option("--force", is_flag=True, help="Executa a limpeza sem pedir confirmação.")
+@click.pass_context
+def clean_storage(ctx: click.Context, force: bool):
+    """
+    Remove TODOS os artefatos do browser-core (snapshots, objetos, logs).
+
+    Esta é uma operação destrutiva e irreversível.
+    """
+    paths = ctx.obj.paths
+    dirs_to_clean = [
+        Path(paths.get("objects_dir")),
+        Path(paths.get("snapshots_metadata_dir")),
+        Path(paths.get("tasks_logs_dir")),
+    ]
+
+    click.echo("Os seguintes diretórios e todo o seu conteúdo serão APAGADOS:")
+    for d in dirs_to_clean:
+        if d.exists():
+            click.echo(f"- {d}")
+
+    if not force:
+        if not click.confirm("\nTem a CERTEZA de que quer continuar?"):
+            click.echo("Operação cancelada.")
+            return
+
+    for dir_path in dirs_to_clean:
+        if dir_path.exists():
             try:
                 shutil.rmtree(dir_path)
                 click.echo(f"Diretório '{dir_path}' limpo com sucesso.")
             except OSError as e:
-                cli_logger.error(f"Não foi possível apagar o diretório '{dir_path}': {e}")
-                click.echo(f"Erro: Não foi possível apagar '{dir_path}'. Verifique as permissões.")
+                click.echo(f"Erro ao apagar o diretório '{dir_path}': {e}", err=True)
+
+    click.echo("\nLimpeza concluída.")
 
 
 if __name__ == "__main__":

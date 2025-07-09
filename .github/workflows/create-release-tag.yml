@@ -1,0 +1,29 @@
+name: Create Release Tag
+
+on:
+  pull_request:
+    types: [ closed ]
+    branches: [ master ]
+
+jobs:
+  tag-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          fetch_all_tags: true
+          commit_sha: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Show new tag
+        run: |
+          echo "Nova tag: ${{ steps.tag_version.outputs.new_tag }}"
