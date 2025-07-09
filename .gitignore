@@ -1,4 +1,4 @@
-# Byte-compiled / ficheiros otimizados
+# Byte-compiled / arquivos otimizados
 __pycache__/
 *.py[cod]
 *$py.class
@@ -12,7 +12,7 @@ virtualenv/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Artefactos de Build, Distribuição e Instalação
+# Artefatos de Build, Distribuição e Instalação
 /dist/
 /build/
 *.egg-info/
@@ -25,19 +25,19 @@ sdist/
 wheel/
 *.whl
 
-# Ficheiros de configuração de IDEs e editores
+# arquivos de configuração de IDEs e editores
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Ficheiros de Output gerados pelo browser-core
+# arquivos de Output gerados pelo browser-core
 # É uma boa prática ignorar o diretório de output padrão
 /browser-core-output/
 *.log
 *.sqlite
 
-# Ficheiros de Teste
+# arquivos de Teste
 .pytest_cache/
 .coverage
 htmlcov/
@@ -45,13 +45,13 @@ nosetests.xml
 coverage.xml
 *.cover
 
-# Ficheiros de Sistema Operacional
+# arquivos de Sistema Operacional
 .DS_Store
 Thumbs.db
 
-# Ficheiros de ambiente (NUNCA comitar segredos)
+# arquivos de ambiente (NUNCA comitar segredos)
 .env
 .env.*
 
-# Ficheiros de configuração de credenciais locais
+# arquivos de configuração de credenciais locais
 .pypirc
