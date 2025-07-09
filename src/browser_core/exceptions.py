@@ -10,14 +10,6 @@ from typing import Any, Dict, Optional
 class BrowserCoreError(Exception):
     """
     Exceção base para todos os erros gerados pelo browser-core.
-
-    Esta classe centraliza a lógica de carregar informações de contexto
-    em cada erro, facilitando o rastreamento e a depuração de problemas.
-
-    Attributes:
-        message (str): A mensagem de erro principal.
-        context (dict): Um dicionário com dados contextuais sobre o erro.
-        original_error (Exception): A exceção original que foi capturada.
     """
 
     def __init__(
@@ -32,17 +24,40 @@ class BrowserCoreError(Exception):
         self.original_error = original_error
 
     def __str__(self) -> str:
-        # Formata a mensagem de erro para incluir o contexto, facilitando a leitura nos logs.
         if self.context:
             context_str = ", ".join(f"{k}={v}" for k, v in self.context.items())
             return f"{self.message} (Contexto: {context_str})"
+        if self.original_error:
+            return f"{self.message} | Erro Original: {self.original_error}"
         return self.message
 
 
-class BrowserManagementError(BrowserCoreError):
-    """Lançada quando falhas ocorrem na inicialização, configuração ou finalização do navegador."""
+class StorageEngineError(BrowserCoreError):
+    """Lançada para qualquer falha dentro do StorageEngine (ex: IO, hash)."""
     pass
 
+
+class SnapshotError(BrowserCoreError):
+    """Lançada para falhas no SnapshotManager (ex: snapshot não encontrado, falha na materialização)."""
+    pass
+
+
+class WorkerError(BrowserCoreError):
+    """Lançada para erros relacionados ao ciclo de vida de um Worker (ex: falha ao iniciar/parar)."""
+    pass
+
+
+class DriverError(BrowserCoreError):
+    """Lançada para erros relacionados especificamente ao WebDriver (ex: falha no download ou inicialização)."""
+    pass
+
+
+class ConfigurationError(BrowserCoreError):
+    """Lançada quando uma configuração fornecida é inválida, ausente ou mal formatada."""
+    pass
+
+
+# --- Exceções de Operações do Navegador (Usadas pelo Worker) ---
 
 class ElementNotFoundError(BrowserCoreError):
     """Lançada quando um elemento esperado não é encontrado na página."""
@@ -69,29 +84,4 @@ class ElementActionError(BrowserCoreError):
 
 class PageLoadError(BrowserCoreError):
     """Lançada quando uma página ou URL falha ao carregar corretamente."""
-    pass
-
-
-class SessionStateError(BrowserCoreError):
-    """Lançada quando ocorrem falhas em operações de estado da sessão (ex: salvar snapshot)."""
-    pass
-
-
-class DriverError(BrowserCoreError):
-    """Lançada para erros relacionados especificamente ao WebDriver (ex: falha na instalação)."""
-    pass
-
-
-class ConfigurationError(BrowserCoreError):
-    """Lançada quando uma configuração fornecida é inválida, ausente ou mal formatada."""
-    pass
-
-
-class ProfileError(BrowserCoreError):
-    """Lançada para erros relacionados com a gestão de perfis de utilizador."""
-    pass
-
-
-class SnapshotError(BrowserCoreError):
-    """Lançada quando uma falha ocorre durante a captura de um snapshot."""
     pass
