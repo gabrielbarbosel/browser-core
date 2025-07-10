@@ -10,35 +10,33 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from ..exceptions import BrowserManagementError
-from .tab import Tab  # Importa a nova classe que representa uma aba
+from .tab import Tab
 
-# Evita importação circular, mas permite o type hinting
+# Evita importação circular, mas permite o type hinting com a classe correta.
 if TYPE_CHECKING:
-    from ..browser import Browser
+    from ..worker import Worker
 
 
 class WindowManager:
     """
-    Gere as janelas e abas do navegador, retornando objetos 'Tab' para controle.
+    Gerencia as janelas e abas do navegador, retornando objetos 'Tab' para controle.
 
     Abstrai as operações de baixo nível do WebDriver, permitindo abrir, fechar e
     alternar o foco entre abas de forma controlada e orientada a objetos.
     """
 
-    def __init__(self, browser_instance: "Browser"):
+    def __init__(self, worker_instance: "Worker"):
         """
         Inicializa o gestor de janelas.
 
         Args:
-            browser_instance: A instância principal da classe Browser.
-                              É necessária para delegar ações como navegação e
-                              execução de scripts.
+            worker_instance: A instância principal da classe Worker.
+                             É necessária para delegar ações como navegação e
+                             execução de roteiros.
         """
-        self._browser = browser_instance
-        # noinspection PyProtectedMember
-        self._driver = browser_instance._driver
-        self._logger = browser_instance.logger
-        # O dicionário agora armazena o nome da aba e o objeto Tab correspondente
+        self._worker = worker_instance
+        self._driver = self._worker.driver
+        self._logger = self._worker.logger
         self._tabs: Dict[str, Tab] = {}
         self._tab_counter = 0
         self.sync_tabs()
@@ -46,12 +44,26 @@ class WindowManager:
     @property
     def current_tab_handle(self) -> Optional[str]:
         """Retorna o handle da aba atualmente em foco."""
-        return self._driver.current_window_handle
+        try:
+            return self._driver.current_window_handle
+        except Exception:
+            self._logger.warning("Não foi possível obter o handle da janela atual, o navegador pode ter sido fechado.")
+            return None
 
     @property
     def known_handles(self) -> List[str]:
         """Retorna uma lista de todos os handles de abas conhecidos."""
         return [tab.handle for tab in self._tabs.values()]
+
+    def get_current_tab_object(self) -> Optional[Tab]:
+        """Retorna o objeto Tab que corresponde à aba atualmente em foco no navegador."""
+        current_handle = self.current_tab_handle
+        if not current_handle:
+            return None
+        for tab in self._tabs.values():
+            if tab.handle == current_handle:
+                return tab
+        return None
 
     def sync_tabs(self) -> None:
         """
@@ -59,7 +71,12 @@ class WindowManager:
         criando ou atualizando os objetos Tab.
         """
         self._logger.debug("Sincronizando handles de abas com o navegador.")
-        handles_no_navegador = self._driver.window_handles
+        try:
+            handles_no_navegador = self._driver.window_handles
+        except Exception:
+            self._logger.warning("Falha ao obter os handles das janelas. O navegador pode não estar mais ativo.")
+            handles_no_navegador = []
+
         self._tab_counter = len(handles_no_navegador)
 
         # Mapeamento padrão: 'main' para a primeira, 'tab_X' para as outras
@@ -67,7 +84,7 @@ class WindowManager:
             ("main" if i == 0 else f"tab_{i}"): Tab(
                 name=("main" if i == 0 else f"tab_{i}"),
                 handle=handle,
-                browser=self._browser
+                worker=self._worker  # Passa a instância do Worker para a Tab
             )
             for i, handle in enumerate(handles_no_navegador)
         }
@@ -78,23 +95,26 @@ class WindowManager:
         Abre uma nova aba, alterna o foco para ela e retorna o objeto Tab controlador.
 
         Args:
-            name: Um nome opcional para identificar a aba (ex: "relatorios").
+            name: Um nome opcional para identificar a aba (ex: "relatórios").
 
         Returns:
             O objeto Tab que controla a nova aba.
         """
         self._logger.info("Abrindo uma nova aba...")
-        previous_handles_count = len(self._driver.window_handles)
+        previous_handles = set(self._driver.window_handles)
         self._driver.execute_script("window.open('');")
 
+        timeout_ms = self._worker.settings.get("timeouts", {}).get("window_management_ms", 10_000)
+        timeout_sec = timeout_ms / 1_000.0
+
         try:
-            wait = WebDriverWait(self._driver, timeout=10)  # Espera até 10 segundos
-            wait.until(EC.number_of_windows_to_be(previous_handles_count + 1))
+            wait = WebDriverWait(self._driver, timeout=timeout_sec)
+            wait.until(EC.number_of_windows_to_be(len(previous_handles) + 1))
         except TimeoutException:
-            raise BrowserManagementError("A nova aba não abriu dentro do tempo esperado.")
+            raise BrowserManagementError(f"A nova aba não abriu dentro do tempo esperado de {timeout_sec}s.")
 
         # Identifica o handle da nova aba
-        new_handle = [h for h in self._driver.window_handles if h not in self.known_handles][0]
+        new_handle = (set(self._driver.window_handles) - previous_handles).pop()
 
         if name:
             tab_name = name
@@ -104,7 +124,7 @@ class WindowManager:
             self._tab_counter += 1
             tab_name = f"tab_{self._tab_counter}"
 
-        new_tab = Tab(name=tab_name, handle=new_handle, browser=self._browser)
+        new_tab = Tab(name=tab_name, handle=new_handle, worker=self._worker)
         self._tabs[tab_name] = new_tab
 
         self._logger.info(f"Nova aba aberta e nomeada como '{tab_name}'.")
@@ -119,10 +139,12 @@ class WindowManager:
         """Alterna o foco para uma aba específica pelo seu nome."""
         target_tab = self.get_tab(name)
         if not target_tab or target_tab.handle not in self._driver.window_handles:
-            self.sync_tabs()  # Tenta sincronizar caso o estado tenha mudado
+            self._logger.warning(f"Aba '{name}' não encontrada ou handle inválido. Tentando sincronizar...")
+            self.sync_tabs()
             target_tab = self.get_tab(name)
             if not target_tab:
-                raise BrowserManagementError(f"A aba com o nome '{name}' não foi encontrada.")
+                raise BrowserManagementError(
+                    f"A aba com o nome '{name}' não foi encontrada, mesmo após a sincronização.")
 
         self._logger.info(f"Alternando foco para a aba: '{name}'")
         self._driver.switch_to.window(target_tab.handle)
@@ -136,16 +158,20 @@ class WindowManager:
                 return
         else:
             # Pega a aba atual para fechar
-            target_tab = self._browser.current_tab
+            target_tab = self.get_current_tab_object()
             if not target_tab:
                 self._logger.warning("Não foi possível determinar a aba atual para fechar.")
                 return
             name = target_tab.name
             self._logger.info(f"Fechando a aba atual: '{name}'.")
 
-        # Delegação final
-        self._driver.switch_to.window(target_tab.handle)
-        self._driver.close()
+        if len(self._driver.window_handles) > 1:
+            self.switch_to_tab(name)
+            self._driver.close()
+        else:
+            # Não fecha a última aba, pois isso fecharia o navegador.
+            self._logger.warning("Tentativa de fechar a última aba. A ação foi ignorada para não encerrar o navegador.")
+            return
 
         if name in self._tabs:
             del self._tabs[name]

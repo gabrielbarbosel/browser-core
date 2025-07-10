@@ -1,4 +1,4 @@
-# Define a API pública do pacote `browser-core`.
+# Define a API pública do pacote 'browser-core'.
 #
 # Este arquivo atua como a fachada principal da biblioteca,
 # tornando os componentes da nova arquitetura de orquestração
@@ -37,7 +37,7 @@ from .exceptions import (
 
 # A variável __all__ define a API pública explícita do pacote.
 # Apenas os nomes listados aqui serão importados quando um cliente
-# usar `from browser_core import *`.
+# usar 'from browser_core import *'.
 __all__ = [
     # --- Classes Principais ---
     "WorkforceManager",

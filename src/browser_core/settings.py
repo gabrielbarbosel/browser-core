@@ -20,7 +20,7 @@ class Settings(TypedDict, total=False):
     """
     Estrutura de configuração principal e unificada para o Browser-Core.
 
-    Agrupa todas as configurações num único objeto para facilitar
+    Agrupa todas as configurações em um único objeto para facilitar
     a passagem de parâmetros para o WorkforceManager e os Workers.
 
     Attributes:
@@ -40,7 +40,7 @@ def default_settings() -> Settings:
     Fornece um conjunto completo de configurações padrão.
 
     Esta função serve como documentação viva, mostrando todas as opções
-    disponíveis para personalização. Um módulo consumidor pode chamar
+    disponíveis para personalização. Um módulo cliente pode chamar
     esta função para obter uma base de configuração e então sobrescrever
     apenas o que for necessário.
 
@@ -67,6 +67,8 @@ def default_settings() -> Settings:
             "element_find_ms": 30_000,
             "page_load_ms": 45_000,
             "script_ms": 30_000,
+            # Timeout para operações de gestão de janelas, como esperar uma nova aba abrir.
+            "window_management_ms": 10_000,
         },
 
         # --- Configurações de Logging ---
@@ -98,7 +100,7 @@ def custom_settings(overrides: Settings) -> Settings:
     Cria uma configuração completa mesclando um objeto de substituição
     com as configurações padrão.
 
-    Isto permite que o utilizador especifique apenas as configurações que
+    Isto permite que o usuário especifique apenas as configurações que
     deseja alterar, mantendo os padrões para o resto.
 
     Args:
@@ -109,17 +111,29 @@ def custom_settings(overrides: Settings) -> Settings:
         Um objeto de configuração completo e pronto para ser usado.
     """
     base = default_settings()
+    custom_paths = overrides.get("paths", {})
 
     # Se o usuário sobrescrever 'output_dir', os caminhos derivados devem ser
     # recalculados com base no novo diretório, a menos que também tenham sido
-    # definidos individualmente.
-    custom_paths = overrides.get("paths", {})
+    # definidos individualmente na substituição.
     if "output_dir" in custom_paths:
-        new_base = Path(custom_paths["output_dir"])
-        # Se um caminho específico não foi sobrescrito, deriva ele do novo base.
-        base["paths"]["objects_dir"] = custom_paths.get("objects_dir", new_base / "objects")
-        base["paths"]["snapshots_metadata_dir"] = custom_paths.get("snapshots_metadata_dir", new_base / "snapshots")
-        base["paths"]["tasks_logs_dir"] = custom_paths.get("tasks_logs_dir", new_base / "tasks_logs")
-        base["paths"]["driver_cache_dir"] = custom_paths.get("driver_cache_dir", new_base / "drivers_cache")
+        new_base_path = Path(custom_paths["output_dir"])
+        base["paths"]["output_dir"] = new_base_path
 
+        derived_paths_keys = {
+            "objects_dir": "objects",
+            "snapshots_metadata_dir": "snapshots",
+            "tasks_logs_dir": "tasks_logs",
+            "driver_cache_dir": "drivers_cache",
+        }
+
+        for key, suffix in derived_paths_keys.items():
+            # Se o caminho específico não foi sobrescrito pelo usuário,
+            # ele é derivado do novo 'output_dir'. Caso contrário, o valor do
+            # usuário é mantido (lógica tratada pelo deep_merge_dicts abaixo).
+            if key not in custom_paths:
+                base["paths"][key] = new_base_path / suffix
+
+    # A função de fusão profunda garante que todas as outras substituições
+    # do usuário, incluindo caminhos específicos, sejam aplicadas.
     return deep_merge_dicts(base, overrides)

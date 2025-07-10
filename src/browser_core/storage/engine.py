@@ -1,7 +1,7 @@
 # Define o motor de armazenamento de baixo nível para a gestão de snapshots.
 #
 # Este módulo implementa o StorageEngine, que utiliza uma abordagem de
-# armazenamento endereçável por conteúdo (semelhante ao Git) para gerir
+# armazenamento endereçável por conteúdo (semelhante ao Git) para gerenciar
 # os arquivos de perfis de navegador de forma extremamente eficiente.
 
 import hashlib
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from ..exceptions import StorageEngineError
-from ..types import FilePath, ObjectHash, RelativePath, SnapshotDelta
+from ..types import FilePath, ObjectHash, RelativePath
 from ..utils import ensure_directory
 
 
@@ -19,11 +19,11 @@ class StorageEngine:
     Motor de armazenamento baseado em conteúdo (content-addressable storage).
 
     É responsável por três operações críticas:
-    1.  Calcular a diferença (delta) entre dois estados de diretório.
-    2.  Armazenar cada arquivo (objeto) de forma única, usando seu hash de
-        conteúdo como identificador, eliminando redundância.
-    3.  Materializar um diretório de trabalho funcional, compondo uma
-        sequência de deltas para reconstruir um estado específico.
+    1. Calcular a diferença (delta) entre dois estados de diretório.
+    2. Armazenar cada arquivo (objeto) de forma única, usando seu hash de
+       conteúdo como identificador, eliminando a redundância.
+    3. Materializar um diretório de trabalho funcional, compondo uma
+       sequência de deltas para reconstruir um estado específico.
     """
 
     def __init__(self, objects_dir: FilePath):
@@ -32,11 +32,12 @@ class StorageEngine:
 
         Args:
             objects_dir: O diretório raiz onde os objetos (arquivos com hash)
-                         serão armazenados. Ex: '.../browser-core-output/objects'.
+                         serão armazenados. Ex: ".../browser-core-output/objects".
         """
         self.objects_dir = ensure_directory(objects_dir)
 
-    def _hash_file(self, file_path: Path) -> ObjectHash:
+    @staticmethod
+    def _hash_file(file_path: Path) -> ObjectHash:
         """
         Calcula o hash SHA256 do conteúdo de um arquivo.
 
@@ -102,8 +103,7 @@ class StorageEngine:
             Um dicionário representando o "diff" entre os diretórios.
         """
         delta: Dict[RelativePath, ObjectHash] = {}
-
-        # Mapeia arquivos base: (caminho_relativo) -> (tamanho, hash)
+        # Armazena (tamanho, hash) para otimizar a comparação.
         base_files: Dict[RelativePath, Tuple[int, ObjectHash]] = {}
         for p in base_dir.rglob("*"):
             if p.is_file():
@@ -116,14 +116,19 @@ class StorageEngine:
             relative_path = str(new_file.relative_to(new_dir))
             new_size = new_file.stat().st_size
 
-            # Compara metadados primeiro
-            if relative_path in base_files and base_files[relative_path][0] == new_size:
-                # Se o tamanho for o mesmo, compare os hashes (como verificação final)
-                if base_files[relative_path][1] == self._hash_file(new_file):
-                    continue  # O arquivo não mudou, pule.
+            # Compara metadados (tamanho) antes de calcular o hash.
+            base_file_meta = base_files.get(relative_path)
+            if base_file_meta and base_file_meta[0] == new_size:
+                # O tamanho é o mesmo, agora verifica o hash como confirmação final.
+                new_hash = self._hash_file(new_file)
+                if base_file_meta[1] == new_hash:
+                    continue  # O arquivo é idêntico, pular.
+            else:
+                # O arquivo é novo ou o tamanho mudou, então o hash precisa ser calculado.
+                new_hash = self._hash_file(new_file)
 
-            # Se o arquivo for novo, modificado, ou o hash diferir
-            new_hash = self.store_object_from_path(new_file)
+            # Se chegamos aqui, o arquivo é novo ou modificado.
+            self.store_object_from_path(new_file)
             delta[relative_path] = new_hash
 
         return delta

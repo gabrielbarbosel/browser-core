@@ -1,4 +1,4 @@
-# Define as exceções personalizadas para o framework browser-core.
+# Define as exceções personalizadas para o framework 'browser-core'.
 #
 # Este módulo estabelece uma hierarquia de classes de erro que permitem
 # um tratamento de falhas específico e contextualizado para diferentes
@@ -54,6 +54,11 @@ class DriverError(BrowserCoreError):
 
 class ConfigurationError(BrowserCoreError):
     """Lançada quando uma configuração fornecida é inválida, ausente ou mal formatada."""
+    pass
+
+
+class BrowserManagementError(BrowserCoreError):
+    """Lançada para erros na gestão de janelas ou abas do navegador."""
     pass
 
 
