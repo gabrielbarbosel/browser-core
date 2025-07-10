@@ -47,10 +47,24 @@ pip install browser-core
 O uso do `browser-core` é dividido em duas fases lógicas: a **preparação de ambientes** (criação de snapshots) e a *
 *execução de tarefas**.
 
-### Fase 1: Criar um Snapshot Reutilizável
+### Fase 1: Criar os Snapshots Reutilizáveis
 
-Primeiro, você cria um estado base. O caso de uso mais comum é um snapshot com uma sessão de usuário já autenticada.
-Este processo é feito uma única vez e automatizado pelo `WorkforceManager`.
+#### Passo 1.1: Criar um Snapshot Base (Raiz)
+
+Primeiro, você precisa de um ponto de partida. Use a CLI para criar um "snapshot base", que representa um perfil de
+navegador limpo. Este comando é executado apenas uma vez.
+
+```bash
+# Cria um snapshot base chamado 'chrome-base' usando a versão mais recente do Chrome.
+browser-core snapshots create-base chrome-base
+```
+
+Você pode inspecionar os snapshots existentes a qualquer momento com `browser-core snapshots list`.
+
+#### Passo 1.2: Criar um Snapshot com Estado (ex: Login)
+
+Agora, a partir do `chrome-base`, crie um estado mais complexo, como uma sessão de usuário autenticada. Este processo é
+automatizado pelo `WorkforceManager`.
 
 ```python
 # scripts/create_login_snapshot.py
@@ -58,9 +72,7 @@ import os
 from browser_core import WorkforceManager, Worker, create_selector, ConfigurationError
 from browser_core.types import SelectorType
 
-# De preferência, carregue credenciais como variáveis de ambiente
-# Nunca coloque senhas ou dados sensíveis diretamente no código.
-# Antes de executar, defina as variáveis no seu terminal:
+# De preferência, carregue credenciais como variáveis de ambiente.
 # export APP_USER="meu_usuario@exemplo.com"
 # export APP_PASSWORD="minha-senha-super-segura"
 APP_USER = os.getenv("APP_USER")
@@ -70,24 +82,20 @@ APP_PASSWORD = os.getenv("APP_PASSWORD")
 # 1. Defina a função que executa a lógica de setup
 def perform_login(worker: Worker):
     """Esta função navega e realiza o login para criar o estado desejado."""
-    # Valida se as credenciais foram carregadas do ambiente
     if not APP_USER or not APP_PASSWORD:
         raise ConfigurationError("As variáveis de ambiente APP_USER e APP_PASSWORD devem ser definidas.")
 
     worker.logger.info("Iniciando processo de login para criar o snapshot...")
     worker.navigate_to("https://app.exemplo.com/login")
 
-    # Define os seletores de forma clara e reutilizável
     EMAIL_INPUT = create_selector("input[name='email']", SelectorType.CSS)
     PASSWORD_INPUT = create_selector("input[name='password']", SelectorType.CSS)
     LOGIN_BUTTON = create_selector("//button[text()='Entrar']", SelectorType.XPATH)
 
-    # Utiliza a API para interagir com a página
     worker.get(EMAIL_INPUT).send_keys(APP_USER)
     worker.get(PASSWORD_INPUT).send_keys(APP_PASSWORD)
     worker.get(LOGIN_BUTTON).click()
 
-    # Aguarda a navegação para a página de dashboard, confirmando o login
     worker.get(create_selector("#dashboard-welcome-message", SelectorType.CSS))
     worker.logger.info("Login realizado com sucesso! Estado pronto para ser capturado.")
 
@@ -96,22 +104,21 @@ def perform_login(worker: Worker):
 def main():
     workforce = WorkforceManager()
 
-    # Assumindo que um snapshot base para o Chrome já existe.
-    # Ele pode ser criado com a CLI ou um script simples.
-    BASE_SNAPSHOT = "chrome_base"  # Ex: um snapshot limpo do Chrome
-    NEW_SNAPSHOT = "app_logged_in_v1"
+    # [ATUALIZADO] IDs de snapshot mais claros
+    BASE_SNAPSHOT = "chrome-base"  # O snapshot que acabamos de criar com a CLI
+    LOGGED_IN_SNAPSHOT = "app_logged_in"  # O novo snapshot que vamos criar
 
     try:
         workforce.create_snapshot_from_task(
             base_snapshot_id=BASE_SNAPSHOT,
-            new_snapshot_id=NEW_SNAPSHOT,
+            new_snapshot_id=LOGGED_IN_SNAPSHOT,
             setup_function=perform_login,
             metadata={
                 "description": "Sessão autenticada no app.exemplo.com.",
                 "user": APP_USER
             }
         )
-        print(f"\nSnapshot '{NEW_SNAPSHOT}' criado com sucesso!")
+        print(f"\nSnapshot '{LOGGED_IN_SNAPSHOT}' criado com sucesso!")
     except Exception as e:
         print(f"\n[!!!] Falha ao criar o snapshot: {e}")
 
@@ -122,7 +129,7 @@ if __name__ == "__main__":
 
 ### Fase 2: Executar Tarefas Usando o Snapshot
 
-Com o snapshot `app_logged_in_v1` pronto, você pode executar inúmeras tarefas que dependem de um usuário autenticado, de
+Com o snapshot `app_logged_in` pronto, você pode executar inúmeras tarefas que dependem de um usuário autenticado, de
 forma massivamente paralela, e **sem nunca mais precisar fazer login**.
 
 ```python
@@ -149,29 +156,24 @@ def extract_report_data(worker: Worker, report_id: str):
 
 
 # --- Lógica de Setup do Worker (opcional) ---
-# Função executada uma vez por worker antes de ele começar a processar os itens.
 def worker_session_setup(worker: Worker) -> bool:
     worker.logger.info(f"Worker {worker.logger.extra['task_id']} está pronto e online.")
-    # Poderia, por exemplo, navegar para uma página inicial comum.
-    # Retornar True indica que o setup foi bem-sucedido.
     return True
 
 
 # --- Execução em Lote ---
 def main():
     settings = default_settings()
-    # Para depuração, é útil desativar o modo headless
-    settings["browser"]["headless"] = False
+    settings["browser"]["headless"] = False  # Útil para depuração
 
     workforce = WorkforceManager(settings)
 
-    # Lista de tarefas a serem executadas
     reports_to_process = ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
 
     try:
         results = workforce.run_tasks_in_squad(
-            squad_size=2,  # Executa 2 navegadores em paralelo
-            base_snapshot_id="app_logged_in_v1",  # Usa o estado de login
+            squad_size=2,
+            base_snapshot_id="app_logged_in",  # Usa o estado de login
             task_items=reports_to_process,
             worker_setup_function=worker_session_setup,
             item_processing_function=extract_report_data
@@ -192,6 +194,11 @@ if __name__ == "__main__":
 
 Use o comando `browser-core` no seu terminal para gerir o ecossistema.
 
+* **Criar um snapshot base:**
+    ```bash
+    browser-core snapshots create-base <snapshot-id>
+    ```
+
 * **Listar snapshots disponíveis:**
     ```bash
     browser-core snapshots list
@@ -199,12 +206,12 @@ Use o comando `browser-core` no seu terminal para gerir o ecossistema.
 
 * **Inspecionar os detalhes de um snapshot:**
     ```bash
-    browser-core snapshots inspect app_logged_in_v1
+    browser-core snapshots inspect app_logged_in
     ```
 
 * **Limpar todo o armazenamento (cuidado, operação destrutiva!):**
     ```bash
-    browser-core storage clean
+    browser-core storage clean --force
     ```
 
 ---
@@ -226,7 +233,7 @@ Se pretende contribuir para o `browser-core`, siga estes passos para configurar 
    # .venv\Scripts\activate    # No Windows
    ```
 
-3. **Instale o projeto em modo "editável":**
+3. **Instale o projeto em modo "editável" com as dependências de desenvolvimento:**
    ```bash
-   pip install -e .
+   pip install -e ".[dev]"
     

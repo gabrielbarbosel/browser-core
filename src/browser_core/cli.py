@@ -9,6 +9,7 @@ from .exceptions import ConfigurationError, SnapshotError, StorageEngineError
 from .settings import default_settings
 from .snapshots.manager import SnapshotManager
 from .storage.engine import StorageEngine
+from .types import BrowserType, DriverInfo
 from .utils import safe_json_dumps
 
 
@@ -42,7 +43,6 @@ class CliContext:
 @click.pass_context
 def cli(ctx: click.Context):
     """Interface de Linha de Comando para gerir o browser-core."""
-    # Cria o objeto de contexto e o anexa ao Click para que os subcomandos possam usá-lo
     ctx.obj = CliContext()
 
 
@@ -53,6 +53,40 @@ def snapshots():
     pass
 
 
+@snapshots.command(name="create-base")
+@click.argument("snapshot_id")
+@click.option(
+    "--browser",
+    type=click.Choice([b.value for b in BrowserType], case_sensitive=False),
+    default=BrowserType.CHROME.value,
+    help="O tipo de navegador para este snapshot base."
+)
+@click.option("--version", default="latest", help="A versão do driver a ser usada (ex: 115.0.5790.170 ou 'latest').")
+@click.pass_context
+def create_base_snapshot(ctx: click.Context, snapshot_id: str, browser: str, version: str):
+    """
+    Cria um snapshot 'raiz' (base) para um navegador específico.
+
+    Este snapshot representa um perfil limpo e serve como ponto de partida
+    para criar outros snapshots mais complexos (ex: com login).
+    """
+    snapshot_manager = ctx.obj.snapshot_manager
+    click.echo(f"A criar snapshot base '{snapshot_id}' para {browser} v{version}...")
+
+    driver_info: DriverInfo = {"name": browser, "version": version}
+    _metadata = {
+        "description": f"Snapshot base para um perfil limpo do {browser.capitalize()} v{version}.",
+        "created_by": "cli"
+    }
+
+    try:
+        snapshot_manager.create_base_snapshot(snapshot_id, driver_info, _metadata)
+        click.secho(f"Snapshot base '{snapshot_id}' criado com sucesso!", fg="green")
+        click.echo("Agora pode usá-lo como 'base_snapshot_id' para criar novos snapshots.")
+    except SnapshotError as e:
+        click.secho(f"Erro ao criar snapshot: {e}", fg="red", err=True)
+
+
 @snapshots.command(name="list")
 @click.pass_context
 def list_snapshots(ctx: click.Context):
@@ -61,13 +95,14 @@ def list_snapshots(ctx: click.Context):
 
     if not snapshots_dir.exists() or not any(snapshots_dir.glob('*.json')):
         click.echo(f"Nenhum snapshot encontrado em '{snapshots_dir}'.")
+        click.echo(f"Dica: Crie um snapshot base com 'browser-core snapshots create-base <ID>'")
         return
 
     click.echo(f"Snapshots encontrados em: {snapshots_dir}")
     for snapshot_file in sorted(snapshots_dir.glob('*.json')):
         try:
             data = json.loads(snapshot_file.read_text(encoding="utf-8"))
-            parent = data.get('parent_id', '---')
+            parent = data.get('parent_id') or '--- (Base)'
             driver = data.get('base_driver', {}).get('name', 'N/A')
             version = data.get('base_driver', {}).get('version', 'N/A')
             click.echo(
@@ -108,11 +143,16 @@ def clean_storage(ctx: click.Context, force: bool):
     Esta é uma operação destrutiva e irreversível.
     """
     paths = ctx.obj.paths
-    dirs_to_clean = [
-        Path(paths.get("objects_dir")),
-        Path(paths.get("snapshots_metadata_dir")),
-        Path(paths.get("tasks_logs_dir")),
+    # Define todos os caminhos que devem ser considerados para limpeza.
+    # O filtro subsequente cuidará dos que não existem ou não estão configurados.
+    potential_dirs_to_clean = [
+        paths.get("objects_dir"),
+        paths.get("snapshots_metadata_dir"),
+        paths.get("tasks_logs_dir"),
+        paths.get("driver_cache_dir"),
     ]
+    # Converte para Path apenas os caminhos que foram definidos.
+    dirs_to_clean = [Path(p) for p in potential_dirs_to_clean if p]
 
     click.echo("Os seguintes diretórios e todo o seu conteúdo serão APAGADOS:")
     for d in dirs_to_clean:

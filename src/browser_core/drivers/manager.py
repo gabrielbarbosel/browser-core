@@ -1,20 +1,19 @@
-# Define o sistema de gestão de WebDrivers.
-#
-# Este módulo fornece a classe `DriverManager`, que lida com o download
+# Este módulo fornece a classe 'DriverManager', que lida com o download
 # automático, versionamento explícito (incluindo 'latest'), cache e
 # configuração de WebDrivers, desacoplando o resto do framework dos
 # detalhes de implementação de cada driver.
 
-import inspect
 from pathlib import Path
-from typing import Any, Optional, Callable, Dict
+from typing import Optional, Callable, Dict
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.driver_cache import DriverCacheManager
 
 from ..exceptions import DriverError, ConfigurationError
+from ..settings import Settings
 from ..types import BrowserConfig, DriverInfo, FilePath, LoggerProtocol, BrowserType, WebDriverProtocol
 
 
@@ -29,20 +28,22 @@ class DriverManager:
     def __init__(
             self,
             logger: LoggerProtocol,
-            driver_cache_dir: Optional[FilePath] = None,
+            settings: Settings,
     ):
         """
         Inicializa o gestor de drivers.
         """
         self.logger = logger
-        if driver_cache_dir:
-            self.driver_cache_dir = Path(driver_cache_dir)
+        self.settings = settings
+        self.driver_cache_dir: Optional[Path] = None
+
+        driver_cache_path_str = self.settings.get("paths", {}).get("driver_cache_dir")
+        if driver_cache_path_str:
+            self.driver_cache_dir = Path(driver_cache_path_str)
             self._ensure_cache_dir()
         else:
-            self.driver_cache_dir = None
             self.logger.info("Nenhum 'driver_cache_dir' fornecido. A usar o diretório de cache padrão do sistema.")
 
-        # Mapa de despacho para as funções de criação de driver (Padrão Factory)
         self._driver_factories: Dict[str, Callable] = {
             BrowserType.CHROME.value: self._create_chrome_driver,
             # Futuramente, outros drivers podem ser adicionados aqui:
@@ -51,6 +52,8 @@ class DriverManager:
 
     def _ensure_cache_dir(self) -> None:
         """Garante que o diretório de cache para os drivers exista."""
+        if not self.driver_cache_dir:
+            return
         try:
             self.driver_cache_dir.mkdir(parents=True, exist_ok=True)
         except (OSError, PermissionError) as e:
@@ -95,22 +98,16 @@ class DriverManager:
         options = ChromeOptions()
         self._apply_common_chrome_options(options, config, profile_dir)
 
-        kwargs_para_manager = {}
-        if requested_version.lower() == "latest":
-            self.logger.debug("A procurar a versão mais recente do ChromeDriver compatível...")
-        else:
-            self.logger.debug(f"A garantir que a versão {requested_version} do ChromeDriver esteja disponível...")
-            init_params = inspect.signature(ChromeDriverManager).parameters
-            possible_args = {"version": requested_version, "driver_version": requested_version}
-            kwargs_para_manager = {key: value for key, value in possible_args.items() if key in init_params}
+        cache = DriverCacheManager(root_dir=str(self.driver_cache_dir)) if self.driver_cache_dir else None
 
-        if self.driver_cache_dir:
-            kwargs_para_manager["path"] = str(self.driver_cache_dir)
+        driver_version_arg = requested_version if requested_version.lower() != "latest" else None
 
-        manager = ChromeDriverManager(**kwargs_para_manager)
+        # O construtor do ChromeDriverManager recebe o 'cache_manager'
+        manager = ChromeDriverManager(driver_version=driver_version_arg, cache_manager=cache)
+
         driver_path = manager.install()
 
-        installed_driver_version = Path(driver_path).parent.name
+        installed_driver_version = manager.get_driver().get_version()
         self.logger.info(f"A iniciar ChromeDriver v{installed_driver_version} a partir de: {driver_path}")
 
         service = ChromeService(executable_path=driver_path)
@@ -134,17 +131,25 @@ class DriverManager:
 
         if config.get("headless", True):
             options.add_argument("--headless=new")
+
+        # Lógica para lidar com o modo anônimo ('incognito').
+        # Se ativado, o perfil de usuário do snapshot é ignorado, pois são mutuamente exclusivos.
         if config.get("incognito"):
             self.logger.warning(
-                "A opção 'incognito' está ativa, o perfil materializado pode não ser usado completamente.")
+                "O modo 'incognito' está ativo. O perfil de usuário do snapshot será ignorado nesta execução."
+            )
             options.add_argument("--incognito")
+        else:
+            # O perfil de usuário (essencial para snapshots) só é adicionado se não estiver em modo anônimo.
+            options.add_argument(f"--user-data-dir={profile_dir}")
+
         if config.get("disable_gpu", True):
             options.add_argument("--disable-gpu")
 
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument(f"--user-data-dir={profile_dir}")
-        window_size = f"{config.get('window_width', 1920)},{config.get('window_height', 1080)}"
+
+        window_size = f"{config.get('window_width', 1_920)},{config.get('window_height', 1_080)}"
         options.add_argument(f"--window-size={window_size}")
 
         for arg in config.get("additional_args", []):

@@ -1,7 +1,7 @@
-# Define todos os tipos de dados, Enums e Protocolos para o browser-core.
+# Define todos os tipos de dados, Enums e Protocolos para o 'browser-core'.
 #
 # Este arquivo centraliza as estruturas de dados, garantindo consistência
-# e permitindo a verificação estática de tipos no módulo. É um
+# e permitindo a verificação estática de tipos no framework. É um
 # componente chave para um código robusto e de fácil manutenção.
 
 from enum import Enum
@@ -34,6 +34,14 @@ ObjectHash = str
 
 RelativePath = str
 """Representa o caminho relativo de um arquivo dentro de um perfil de navegador."""
+
+# Tipo explícito para o Delta ---
+SnapshotDelta = Dict[RelativePath, ObjectHash]
+"""
+Define um 'delta', mapeando caminhos relativos de arquivos para seus hashes.
+Representa as mudanças entre um snapshot e seu pai.
+Ex: {"Default/Cookies": "hash123", "Extensions/uBlock/manifest.json": "hash456"}
+"""
 
 
 # ==============================================================================
@@ -72,8 +80,8 @@ class LogLevel(Enum):
 class TaskStatus(Enum):
     """Define os possíveis status de uma tarefa processada pelo WorkforceManager."""
     SUCCESS = "SUCCESS"
-    SETUP_FAILED = "ERRO_SETUP"
-    TASK_FAILED = "ERRO_TAREFA"
+    SETUP_FAILED = "SETUP_FAILED"
+    TASK_FAILED = "TASK_FAILED"
 
 
 # ==============================================================================
@@ -88,7 +96,7 @@ class BrowserConfig(TypedDict, total=False):
     window_width: int
     window_height: int
     user_agent: Optional[str]
-    incognito: bool  # Nota: Incognito pode entrar em conflito com perfis materializados.
+    incognito: bool
     disable_gpu: bool
     additional_args: List[str]
 
@@ -98,6 +106,8 @@ class TimeoutConfig(TypedDict, total=False):
     element_find_ms: TimeoutMs
     page_load_ms: TimeoutMs
     script_ms: TimeoutMs
+    # Adicionado em uma etapa anterior para consistência
+    window_management_ms: TimeoutMs
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -113,34 +123,16 @@ class PathsConfig(TypedDict, total=False):
     """
     Define a estrutura para os caminhos de saída personalizáveis.
     """
-    # Diretório base para todos os artefatos
     output_dir: FilePath
-    # Os caminhos abaixo podem ser sobrescritos individualmente.
-    # Se não forem fornecidos, serão derivados do 'output_dir'.
-    # Diretório para armazenar todos os objetos de arquivo por hash.
     objects_dir: FilePath
-    # Diretório para armazenar os metadados .json dos snapshots.
     snapshots_metadata_dir: FilePath
-    # Diretório base para os logs de tarefas executadas pelos workers.
     tasks_logs_dir: FilePath
-    # Diretório para o cache dos executáveis dos WebDrivers.
     driver_cache_dir: FilePath
 
 
 # ==============================================================================
 # --- Estruturas de Dados da Arquitetura (TypedDicts) ---
 # ==============================================================================
-
-class SnapshotDelta(TypedDict):
-    """
-    Define um 'delta', mapeando caminhos relativos de arquivos para seus hashes.
-    Representa as mudanças entre um snapshot e seu pai.
-    Ex: {"Default/Cookies": "hash123", "Extensions/ublock/manifest.json": "hash456"}
-    """
-    # Esta estrutura permite chaves dinâmicas do tipo RelativePath -> ObjectHash,
-    # por isso não definimos campos estáticos.
-    pass
-
 
 class DriverInfo(TypedDict):
     """Metadados sobre a versão do WebDriver vinculada a uma cadeia de snapshots."""
@@ -154,13 +146,53 @@ class SnapshotData(TypedDict):
     parent_id: Optional[SnapshotId]
     base_driver: DriverInfo
     created_at: str
-    delta: Dict[RelativePath, ObjectHash]
+    delta: SnapshotDelta
     metadata: Dict[str, Any]
 
 
 # ==============================================================================
 # --- Protocolos para Inversão de Dependência (SOLID) ---
 # ==============================================================================
+
+class WebElementProtocol(Protocol):
+    """Define o contrato mínimo para um WebElement, permitindo buscas aninhadas."""
+
+    @property
+    def text(self) -> str: ...
+
+    @property
+    def tag_name(self) -> str: ...
+
+    def get_attribute(self, name: str) -> str: ...
+
+    def click(self) -> None: ...
+
+    def send_keys(self, *values: str) -> None: ...
+
+    def clear(self) -> None: ...
+
+    def find_element(self, by: str, value: str) -> Any: ...
+
+    def find_elements(self, by: str, value: str) -> List[Any]: ...
+
+
+class SwitchToProtocol(Protocol):
+    """Define o contrato para o objeto retornado por `driver.switch_to`."""
+
+    def window(self, window_name: str) -> None: ...
+
+    def frame(self, frame_reference: Any) -> None: ...
+
+    def default_content(self) -> None: ...
+
+    def parent_frame(self) -> None: ...
+
+    @property
+    def active_element(self) -> "WebElementProtocol": ...
+
+    @property
+    def alert(self) -> Any: ...
+
 
 class WebDriverProtocol(Protocol):
     """Define o contrato mínimo que um objeto de WebDriver deve seguir."""
@@ -186,11 +218,11 @@ class WebDriverProtocol(Protocol):
 
     def close(self) -> None: ...
 
-    def switch_to(self) -> Any: ...
+    def switch_to(self) -> "SwitchToProtocol": ...
 
-    def find_element(self, by: str, value: str) -> Any: ...
+    def find_element(self, by: str, value: str) -> WebElementProtocol: ...
 
-    def find_elements(self, by: str, value: str) -> List[Any]: ...
+    def find_elements(self, by: str, value: str) -> List[WebElementProtocol]: ...
 
     def execute_script(self, script: str, *args: Any) -> Any: ...
 

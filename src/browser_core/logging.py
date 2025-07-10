@@ -10,10 +10,10 @@ import logging.handlers
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
-from .types import FilePath, LoggingConfig
-from .utils import ensure_directory, mask_sensitive_data
+from .types import LoggingConfig
+from .utils import mask_sensitive_data
 
 if TYPE_CHECKING:
     from .worker import Worker
@@ -30,7 +30,7 @@ class StructuredFormatter(logging.Formatter):
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
-        """Formata o registo de log, aplicando máscaras e o formato escolhido."""
+        """Formata o registro de log, aplicando máscaras e o formato escolhido."""
         if self.mask_credentials and isinstance(record.msg, str):
             record.msg = mask_sensitive_data(str(record.msg))
 
@@ -60,7 +60,8 @@ class StructuredFormatter(logging.Formatter):
 
         return json.dumps(log_data, ensure_ascii=False, default=str)
 
-    def _format_detailed(self, record: logging.LogRecord) -> str:
+    @staticmethod
+    def _format_detailed(record: logging.LogRecord) -> str:
         """Formata a saída de log de forma legível para humanos."""
         timestamp = datetime.fromtimestamp(record.created).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -90,16 +91,18 @@ class TaskLoggerAdapter(logging.LoggerAdapter):
 
         kwargs["extra"].update(self.extra)
 
-        if self.worker_instance and self.worker_instance._is_started:
+        if self.worker_instance and self.worker_instance.is_running():
             try:
                 if current_tab := self.worker_instance.current_tab:
                     kwargs["extra"]["tab_name"] = current_tab.name
-            except Exception:
-                pass  # Evita que uma falha no logging quebre a aplicação.
+            except AttributeError:
+                # Evita que uma falha no logging (ex: aba fechada) quebre a aplicação.
+                pass
 
         return msg, kwargs
 
 
+# noinspection GrazieInspection
 def setup_task_logger(
         logger_name: str,
         log_dir: Path,
