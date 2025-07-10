@@ -17,7 +17,7 @@ echo ">> Validando os pacotes com Twine..."
 twine check dist/*
 
 echo ">> Publicando no repositório..."
-twine upload dist/*
+twine upload -- dist/*
 
 echo
 echo "Feito! Nova versão no ar. ✨"
