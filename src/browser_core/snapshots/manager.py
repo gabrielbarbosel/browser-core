@@ -7,19 +7,19 @@
 
 import json
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..exceptions import SnapshotError, StorageEngineError
 from ..storage.engine import StorageEngine
-from ..types import FilePath, SnapshotData, SnapshotId
+from ..types import FilePath, SnapshotData, SnapshotId, DriverInfo, SnapshotDelta
 from ..utils import safe_json_dumps
 
 
 class SnapshotManager:
     """
-    Fornece uma API de alto nível para gerir o ciclo de vida dos snapshots.
+    Fornece uma API de alto nível para gerenciar o ciclo de vida dos snapshots.
     """
 
     def __init__(self, snapshots_metadata_dir: FilePath, storage_engine: StorageEngine):
@@ -27,6 +27,7 @@ class SnapshotManager:
         Inicializa o gestor de snapshots.
         """
         self.snapshots_dir = Path(snapshots_metadata_dir)
+        self.snapshots_dir.mkdir(parents=True, exist_ok=True)  # Garante que o diretório exista
         self.storage_engine = storage_engine
 
     def get_snapshot_data(self, snapshot_id: SnapshotId) -> Optional[SnapshotData]:
@@ -69,6 +70,10 @@ class SnapshotManager:
         """
         try:
             chain = self._resolve_snapshot_chain(snapshot_id)
+
+            # Coleta os deltas de cada snapshot na cadeia.
+            # A verificação 'if s.get("delta")' garante que apenas snapshots com
+            # alterações (deltas não vazios) sejam incluídos na materialização.
             deltas = [s.get("delta", {}) for s in chain if s.get("delta")]
 
             self.storage_engine.materialize(deltas, target_dir)
@@ -80,6 +85,30 @@ class SnapshotManager:
                 original_error=e
             )
 
+    def create_base_snapshot(
+            self,
+            new_id: SnapshotId,
+            driver_info: DriverInfo,
+            metadata: Optional[Dict[str, Any]] = None
+    ) -> SnapshotData:
+        """
+        Cria um snapshot "raiz" (base), sem pai e com um perfil vazio.
+        """
+        if self.get_snapshot_data(new_id):
+            raise SnapshotError(f"Já existe um snapshot com o ID '{new_id}'.")
+
+        new_snapshot_data: SnapshotData = {
+            "id": new_id,
+            "parent_id": None,  # Sem pai
+            "base_driver": driver_info,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "delta": {},  # Delta vazio, representa um perfil limpo
+            "metadata": metadata or {},
+        }
+
+        self._save_snapshot_data(new_id, new_snapshot_data)
+        return new_snapshot_data
+
     def create_snapshot(
             self,
             new_id: SnapshotId,
@@ -89,20 +118,10 @@ class SnapshotManager:
     ) -> SnapshotData:
         """
         Cria um novo snapshot calculando o delta a partir de um perfil modificado.
-
-        Nota: Esta é uma API de baixo nível. Para a maioria dos casos de uso,
-        é recomendado utilizar o método `WorkforceManager.create_snapshot_from_task`,
-        que automatiza a execução de um worker para gerar o estado final desejado.
-
-        Args:
-            new_id: O ID para o novo snapshot a ser criado.
-            parent_id: O ID do snapshot que serviu de base.
-            final_profile_dir: O caminho para o diretório de perfil com o estado final.
-            metadata: Um dicionário opcional com dados arbitrários (ex: descrição).
-
-        Returns:
-            Os metadados do novo snapshot criado.
         """
+        if self.get_snapshot_data(new_id):
+            raise SnapshotError(f"Já existe um snapshot com o ID '{new_id}'.")
+
         parent_snapshot = self.get_snapshot_data(parent_id)
         if not parent_snapshot:
             raise SnapshotError(f"Snapshot pai '{parent_id}' não encontrado.")
@@ -116,19 +135,22 @@ class SnapshotManager:
             "id": new_id,
             "parent_id": parent_id,
             "base_driver": parent_snapshot["base_driver"],
-            "created_at": datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "delta": delta,
             "metadata": metadata or {},
         }
 
-        snapshot_file = self.snapshots_dir / f"{new_id}.json"
+        self._save_snapshot_data(new_id, new_snapshot_data)
+        return new_snapshot_data
+
+    def _save_snapshot_data(self, snapshot_id: SnapshotId, data: SnapshotData) -> None:
+        """Método auxiliar para salvar os metadados de um snapshot."""
+        snapshot_file = self.snapshots_dir / f"{snapshot_id}.json"
         try:
             with open(snapshot_file, "w", encoding="utf-8") as f:
-                f.write(safe_json_dumps(new_snapshot_data, indent=2))
+                f.write(safe_json_dumps(data, indent=2))
         except IOError as e:
             raise SnapshotError(
                 f"Falha ao salvar o arquivo de metadados do novo snapshot: {snapshot_file}",
                 original_error=e
             )
-
-        return new_snapshot_data

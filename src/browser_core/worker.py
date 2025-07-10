@@ -10,11 +10,10 @@ from selenium.common.exceptions import WebDriverException
 from .drivers.manager import DriverManager
 from .exceptions import WorkerError, PageLoadError
 from .logging import TaskLoggerAdapter
-# Importa a nova classe de proxy
 from .selectors.element_proxy import ElementProxy
 from .selectors.manager import SelectorDefinition, SelectorManager
 from .settings import Settings
-from .types import DriverInfo, WebDriverProtocol
+from .types import DriverInfo, WebDriverProtocol, WebElementProtocol
 from .utils import ensure_directory
 from .windows.manager import WindowManager
 from .windows.tab import Tab
@@ -27,6 +26,7 @@ class Worker:
 
     def __init__(
             self,
+            worker_id: str,
             driver_info: DriverInfo,
             profile_dir: Path,
             logger: "TaskLoggerAdapter",
@@ -36,6 +36,7 @@ class Worker:
         """
         Inicializa a instância do Worker.
         """
+        self.worker_id = worker_id
         self.settings = settings
         self.driver_info = driver_info
         self.profile_dir = profile_dir
@@ -45,12 +46,23 @@ class Worker:
         self._driver: Optional[WebDriverProtocol] = None
         self._is_started = False
 
-        self.driver_manager = DriverManager(logger=self.logger)
-        self.selector_manager = SelectorManager(logger=self.logger)
+        self.driver_manager = DriverManager(logger=self.logger, settings=self.settings)
+        self.selector_manager = SelectorManager(logger=self.logger, settings=self.settings)
         self.window_manager: Optional[WindowManager] = None
 
         self.logger.worker_instance = self
         self.logger.info("Instância de Worker criada e pronta para iniciar.")
+
+    @property
+    def driver(self) -> WebDriverProtocol:
+        """Propriedade pública para aceder de forma segura à instância do driver."""
+        self._ensure_started()
+        return self._driver
+
+    @property
+    def is_running(self) -> bool:
+        """Verifica se o worker e o driver estão ativos."""
+        return self._is_started and self._driver is not None
 
     # --- Métodos de Ciclo de Vida ---
 
@@ -71,7 +83,7 @@ class Worker:
             self.window_manager = WindowManager(self)
             self._configure_driver_timeouts()
             self._is_started = True
-            duration = (time.time() - start_time) * 1000
+            duration = (time.time() - start_time) * 1_000
             self.logger.info(f"Worker iniciado com sucesso em {duration:.2f}ms.")
         except Exception as e:
             self.logger.error(f"Falha crítica ao iniciar o worker: {e}", exc_info=True)
@@ -101,7 +113,7 @@ class Worker:
         try:
             self._driver.get(url)
         except WebDriverException as e:
-            timeout_ms = self.settings.get("timeouts", {}).get("page_load_ms", 45000)
+            timeout_ms = self.settings.get("timeouts", {}).get("page_load_ms", 45_000)
             raise PageLoadError(
                 f"Falha ao carregar a URL: {url}",
                 context={"url": url, "timeout_ms": timeout_ms},
@@ -123,24 +135,20 @@ class Worker:
         self._ensure_started()
         return ElementProxy(self, definition)
 
-    def find_element(self, definition: SelectorDefinition) -> Any:
+    def find_element(self, definition: SelectorDefinition) -> WebElementProtocol:
         """
         Encontra um elemento na página e o retorna imediatamente.
 
-        Este método é usado internamente pelo ElementProxy. Para uso geral,
-        prefira o método `get()` para uma API mais fluida.
-
-        Args:
-            definition: O objeto SelectorDefinition com os detalhes do seletor.
-
-        Returns:
-            O WebElement encontrado pelo Selenium.
+        Este método é obsoleto para uso externo e é mantido para compatibilidade
+        interna do ElementProxy antes da refatoração. Prefira `get()`.
+        O `ElementProxy` chama `selector_manager.find_element` diretamente.
         """
         self._ensure_started()
-        return self.selector_manager.find_element(self._driver, definition)
+        element, _ = self.selector_manager.find_element(self._driver, definition)
+        return element
 
     def execute_script(self, script: str, *args: Any) -> Any:
-        """Executa um script JavaScript no contexto da página atual."""
+        """Executa um roteiro JavaScript no contexto da página atual."""
         self._ensure_started()
         return self._driver.execute_script(script, *args)
 
@@ -176,7 +184,7 @@ class Worker:
 
     def capture_debug_artifacts(self, name: str) -> Optional[Path]:
         """Captura artefatos de depuração do estado atual do navegador."""
-        if not self._is_started:
+        if not self.is_running:
             self.logger.warning("Não é possível capturar artefatos, o worker não está iniciado.")
             return None
         try:
@@ -197,14 +205,14 @@ class Worker:
 
     def _ensure_started(self) -> None:
         """Garante que o worker foi iniciado antes de qualquer operação."""
-        if not self._is_started or not self._driver or not self.window_manager:
+        if not self.is_running:
             raise WorkerError("Operação não permitida. O worker não foi iniciado.")
 
     def _configure_driver_timeouts(self) -> None:
         """Aplica as configurações de timeout ao driver."""
         timeouts = self.settings.get("timeouts", {})
-        page_load_sec = timeouts.get("page_load_ms", 45000) / 1000.0
-        script_sec = timeouts.get("script_ms", 30000) / 1000.0
+        page_load_sec = timeouts.get("page_load_ms", 45_000) / 1_000.0
+        script_sec = timeouts.get("script_ms", 3_0000) / 1_000.0
         self._driver.set_page_load_timeout(page_load_sec)
         self._driver.set_script_timeout(script_sec)
 

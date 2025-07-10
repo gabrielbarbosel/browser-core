@@ -7,12 +7,13 @@
 import json
 import re
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union, List, Generator
 
 from .exceptions import ConfigurationError
 from .types import FilePath
+
+D = TypeVar("D", bound=Dict[str, Any])
 
 
 def validate_timeout(timeout: Union[int, float], min_value: int = 100) -> int:
@@ -41,10 +42,10 @@ def validate_timeout(timeout: Union[int, float], min_value: int = 100) -> int:
 
 def validate_selector(selector: str) -> str:
     """
-
     Valida e normaliza uma string de seletor.
 
-    Garante que o seletor não seja uma string vazia ou contendo apenas espaços.
+    Garante que o seletor não seja uma string vazia ou contendo apenas espaços
+    e remove espaços em branco no início e no fim.
     """
     if not isinstance(selector, str) or not selector.strip():
         raise ConfigurationError("O seletor não pode ser uma string vazia.")
@@ -63,12 +64,13 @@ def ensure_directory(path: FilePath) -> Path:
         )
 
 
-def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge_dicts(base: D, override: Dict[str, Any]) -> D:
     """
     Mescla dois dicionários recursivamente ('deep merge').
 
     Valores no dicionário 'override' têm precedência. Se uma chave existe em ambos
     e os valores são dicionários, eles são mesclados recursivamente.
+    O tipo do dicionário base (ex: dict, Settings) é preservado.
     """
     result = base.copy()
     for key, value in override.items():
@@ -85,9 +87,9 @@ def retry_on_exception(
         delay_ms: int = 1000,
         exceptions_to_catch: Tuple[Type[Exception], ...] = (Exception,),
 ) -> Any:
-    """Executa uma função e a tenta novamente em caso de exceções específicas."""
+    """Executa uma função e tenta executá-la novamente em caso de exceções específicas."""
     last_exception: Optional[Exception] = None
-    current_delay_s = float(delay_ms) / 1000.0
+    current_delay_s = float(delay_ms) / 1_000.0
 
     for attempt in range(max_attempts):
         try:
@@ -140,3 +142,26 @@ def clean_filename(filename: str, max_length: int = 255) -> str:
     cleaned = re.sub(r"[\s.]+", "_", cleaned)
     cleaned = re.sub(r"_+", "_", cleaned)
     return cleaned.strip("_")[:max_length] or "unnamed_file"
+
+
+def _split_list(data: List[Any], n_chunks: int) -> Generator[List[Any], None, None]:
+    """
+    Divide uma lista em 'n' pedaços (chunks) de tamanho o mais uniforme possível.
+    Esta função não depende de bibliotecas externas como o NumPy.
+
+    Args:
+        data: A lista de itens a ser dividida.
+        n_chunks: O número de pedaços a serem criados.
+
+    Yields:
+        Um gerador que produz cada chunk como uma lista.
+    """
+    if n_chunks <= 0:
+        raise ValueError("O número de chunks deve ser maior que zero.")
+    # Calcula o tamanho base de cada chunk e quantos elementos "sobram"
+    k, m = divmod(len(data), n_chunks)
+    # Distribui os elementos que sobraram um a um para os primeiros 'm' chunks
+    for i in range(n_chunks):
+        start = i * k + min(i, m)
+        end = (i + 1) * k + min(i + 1, m)
+        yield data[start:end]

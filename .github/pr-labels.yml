@@ -30,6 +30,6 @@ refactor:
 build:
   - "dependencies"
 
-# Mudanças de performance
+# Mudanças de desempenho
 perf:
-  - "performance"
+  - "desempenho"
