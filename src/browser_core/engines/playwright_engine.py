@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
+from ..exceptions import WorkerError
+
 try:  # Playwright pode não estar instalado em todos os ambientes
     from playwright.sync_api import (
         sync_playwright,
@@ -54,17 +56,17 @@ class PlaywrightEngine:
     def navigate_to(self, url: str) -> None:
         """Navega para a URL especificada usando a aba ativa."""
         if not self._page:
-            raise RuntimeError("Engine não iniciada")
+            raise WorkerError("Engine não iniciada")
         self._page.goto(url)
 
     def find_element(self, selector: Any) -> Any:
         """Localiza um elemento na página através do seletor informado."""
         if not self._page:
-            raise RuntimeError("Engine não iniciada")
+            raise WorkerError("Engine não iniciada")
         return self._page.query_selector(selector.primary)
 
     def execute_script(self, script: str, *args: Any) -> Any:
         """Executa JavaScript no contexto da página ativa."""
         if not self._page:
-            raise RuntimeError("Engine não iniciada")
+            raise WorkerError("Engine não iniciada")
         return self._page.evaluate(script, *args)

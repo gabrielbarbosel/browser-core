@@ -30,12 +30,33 @@ class SeleniumFirefoxEngine(SeleniumBaseEngine):
         if not self._config.get("incognito"):
             options.set_preference("profile", str(profile_dir))
         cache = (
-            DriverCacheManager(root_dir=str(self._worker.settings.get("paths", {}).get("driver_cache_dir")))
+            DriverCacheManager(
+                root_dir=str(
+                    self._worker.settings.get("paths", {}).get("driver_cache_dir")
+                )
+            )
             if self._worker.settings.get("paths", {}).get("driver_cache_dir")
             else None
         )
         manager = GeckoDriverManager(cache_manager=cache)
         driver_path = manager.install()
         service = FirefoxService(executable_path=driver_path)
-        driver = cast(WebDriverProtocol, webdriver.Firefox(service=service, options=options))
+        driver = cast(
+            WebDriverProtocol, webdriver.Firefox(service=service, options=options)
+        )
         return driver
+
+    def start(self, profile_dir: Path) -> WebDriverProtocol:
+        driver = super().start(profile_dir)
+        self._configure_driver_timeouts()
+        return driver
+
+    def _configure_driver_timeouts(self) -> None:
+        """Aplica as configurações de timeout definidas nas settings."""
+        if not self._driver:
+            return
+        timeouts = self._worker.settings.get("timeouts", {})
+        page_load_sec = timeouts.get("page_load_ms", 45_000) / 1_000.0
+        script_sec = timeouts.get("script_ms", 30_000) / 1_000.0
+        self._driver.set_page_load_timeout(page_load_sec)
+        self._driver.set_script_timeout(script_sec)
