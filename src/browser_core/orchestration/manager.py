@@ -1,38 +1,32 @@
-# Define o gestor da "força de trabalho", orquestrando múltiplos workers.
-#
-# O WorkforceManager é a principal interface de alto nível para executar
-# tarefas em paralelo, gerindo pools de workers, distribuição de trabalho
-# e a criação de snapshots de forma automatizada.
+"""Gestor principal de orquestração para múltiplos workers."""
 
 import logging
+import queue
 import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from .exceptions import SnapshotError, WorkerError
-from .logging import StructuredFormatter
-from .settings import Settings, default_settings
-from .snapshots.manager import SnapshotManager
-from .storage.engine import StorageEngine
-from .types import TaskStatus
-from .utils import _split_list
+from .factory import WorkerFactory
 from .worker import Worker
-from .worker_factory import WorkerFactory
+from ..exceptions import SnapshotError, WorkerError
+from ..logging import StructuredFormatter
+from ..settings import Settings, default_settings
+from ..snapshots.manager import SnapshotManager
+from ..storage.engine import StorageEngine
+from ..types import TaskStatus
 
 
-class WorkforceManager:
+class Orchestrator:
     """
     Orquestra a execução de tarefas em um ou mais workers, gerindo
     o ciclo de vida e o logging de forma centralizada e hierárquica.
     """
 
     def __init__(self, settings: Optional[Settings] = None):
-        """
-        Inicializa o WorkforceManager.
-        """
+        """Inicializa o orquestrador principal."""
         self.settings = settings or default_settings()
         paths = self.settings.get("paths", {})
 
@@ -55,11 +49,11 @@ class WorkforceManager:
         )
 
     def create_snapshot_from_task(
-        self,
-        base_snapshot_id: str,
-        new_snapshot_id: str,
-        setup_function: Callable[[Worker], None],
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            base_snapshot_id: str,
+            new_snapshot_id: str,
+            setup_function: Callable[[Worker], None],
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Cria um novo snapshot executando uma tarefa de setup a partir de um estado base.
@@ -80,7 +74,7 @@ class WorkforceManager:
         factory = WorkerFactory(self.settings, workforce_run_dir)
 
         with tempfile.TemporaryDirectory(
-            prefix=f"snapshot_creator_{new_snapshot_id}_"
+                prefix=f"snapshot_creator_{new_snapshot_id}_"
         ) as temp_profile_dir_str:
             temp_profile_dir = Path(temp_profile_dir_str)
             self.main_logger.debug(
@@ -125,12 +119,12 @@ class WorkforceManager:
             self.main_logger.info(f"Snapshot '{new_snapshot_id}' criado com sucesso!")
 
     def run_tasks_in_squad(
-        self,
-        base_snapshot_id: str,
-        task_items: List[Any],
-        worker_setup_function: Callable[[Worker], bool],
-        item_processing_function: Callable[[Worker, Any], Any],
-        squad_size: Optional[int] = None,
+            self,
+            base_snapshot_id: str,
+            task_items: List[Any],
+            worker_setup_function: Callable[[Worker], bool],
+            item_processing_function: Callable[[Worker, Any], Any],
+            squad_size: Optional[int] = None,
     ) -> List[Any]:
         """
         Executa tarefas num "esquadrão" de workers persistentes.
@@ -157,75 +151,83 @@ class WorkforceManager:
         )
         consolidated_handler.setFormatter(formatter)
 
-        driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)[
-            "base_driver"
-        ]
-        task_chunks = list(_split_list(task_items, squad_size))
-        worker_instances = []
-        worker_dirs = []
+        driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)["base_driver"]
+        task_queue: "queue.Queue[Any]" = queue.Queue()
+        for item in task_items:
+            task_queue.put(item)
+
+        worker_instances: List[Worker] = []
+        worker_dirs: List[Path] = []
 
         factory = WorkerFactory(self.settings, workforce_run_dir)
 
-        # Prepara um worker para cada chunk de tarefas.
-        # Se houver mais workers do que chunks, alguns ficarão ociosos.
-        num_active_workers = min(squad_size, len(task_chunks))
-
-        for i in range(num_active_workers):
+        def prepare_worker(i: int) -> Tuple[Path, Worker]:
             worker_dir = Path(tempfile.mkdtemp(prefix=f"squad_worker_profile_{i}_"))
-            worker_dirs.append(worker_dir)
             self.snapshot_manager.materialize_for_worker(base_snapshot_id, worker_dir)
-
             worker = factory.create_worker(
                 driver_info=driver_info,
                 profile_dir=worker_dir,
                 worker_id=f"worker_{i}",
                 consolidated_log_handler=consolidated_handler,
             )
-            worker_instances.append(worker)
+            return worker_dir, worker
 
-        def squad_worker_task(
-            worker_inst: Worker, chunk: List[Any], worker_id_num: int
-        ):
+        with ThreadPoolExecutor(max_workers=squad_size) as executor:
+            futures = [executor.submit(prepare_worker, i) for i in range(squad_size)]
+            for future in as_completed(futures):
+                d, w = future.result()
+                worker_dirs.append(d)
+                worker_instances.append(w)
+
+        def squad_worker_task(worker_inst: Worker, worker_id_num: int):
             with worker_inst:
                 if not worker_setup_function(worker_inst):
                     worker_inst.logger.error(
                         "Falha no setup do worker. Abortando tarefas para este worker."
                     )
-                    return [
-                        self._create_error_result(
-                            item, TaskStatus.SETUP_FAILED, "Falha no setup do worker"
+                    failed = []
+                    while not task_queue.empty():
+                        try:
+                            queued_item = task_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        failed.append(
+                            self._create_error_result(
+                                queued_item, TaskStatus.SETUP_FAILED, "Falha no setup do worker"
+                            )
                         )
-                        for item in chunk
-                    ]
+                    return failed
 
                 results = []
-                for item in chunk:
+                while True:
                     try:
-                        result_data = item_processing_function(worker_inst, item)
-                        # Garante que o status de sucesso seja adicionado se não houver um resultado estruturado.
+                        queued_item = task_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    try:
+                        result_data = item_processing_function(worker_inst, queued_item)
                         if (
-                            isinstance(result_data, dict)
-                            and "status" not in result_data
+                                isinstance(result_data, dict)
+                                and "status" not in result_data
                         ):
                             result_data["status"] = TaskStatus.SUCCESS.value
                         elif not isinstance(result_data, dict):
-                            # Envolve resultados simples em uma estrutura padrão.
                             result_data = {
-                                "item": item,
+                                "item": queued_item,
                                 "status": TaskStatus.SUCCESS.value,
                                 "data": result_data,
                             }
                         results.append(result_data)
                     except Exception as exc:
                         worker_inst.logger.error(
-                            f"Erro ao processar item '{item}': {exc}", exc_info=True
+                            f"Erro ao processar item '{queued_item}': {exc}", exc_info=True
                         )
                         worker_inst.capture_debug_artifacts(
                             f"erro_processamento_item_{worker_id_num}"
                         )
                         results.append(
                             self._create_error_result(
-                                item, TaskStatus.TASK_FAILED, str(exc)
+                                queued_item, TaskStatus.TASK_FAILED, str(exc)
                             )
                         )
                 return results
@@ -234,11 +236,8 @@ class WorkforceManager:
         try:
             with ThreadPoolExecutor(max_workers=squad_size) as executor:
                 futures = {
-                    executor.submit(
-                        squad_worker_task, worker_instances[i], task_chunks[i], i
-                    ): i
-                    for i, chunk in enumerate(task_chunks)
-                    if chunk
+                    executor.submit(squad_worker_task, worker_instances[i], i): i
+                    for i in range(len(worker_instances))
                 }
                 for future in as_completed(futures):
                     try:
@@ -267,7 +266,7 @@ class WorkforceManager:
 
     @staticmethod
     def _create_error_result(
-        item: Any, status: TaskStatus, reason: str
+            item: Any, status: TaskStatus, reason: str
     ) -> Dict[str, Any]:
         """Cria um dicionário de resultado de erro padronizado."""
         return {"item": item, "status": status.value, "motivo": reason}

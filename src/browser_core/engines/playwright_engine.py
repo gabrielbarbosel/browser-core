@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover - dependência opcional
     Browser = BrowserContext = Page = Any  # type: ignore[misc]
 
 if TYPE_CHECKING:  # Evita importação circular para o type checker
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
 class PlaywrightEngine:

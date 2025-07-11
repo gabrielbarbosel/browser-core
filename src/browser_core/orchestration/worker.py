@@ -3,20 +3,24 @@
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from selenium.common.exceptions import WebDriverException
 
-from .engines import AutomationEngine, SeleniumEngine, PlaywrightEngine
-from .exceptions import WorkerError, PageLoadError
-from .logging import TaskLoggerAdapter
-from .selectors.element_proxy import ElementProxy
-from .selectors.manager import SelectorDefinition, SelectorManager
-from .settings import Settings
-from .types import DriverInfo, WebElementProtocol
-from .utils import ensure_directory
-from .windows.manager import WindowManager
-from .windows.tab import Tab
+from ..engines import (
+    AutomationEngine,
+    SeleniumChromeEngine,
+    SeleniumFirefoxEngine,
+)
+from ..exceptions import WorkerError, PageLoadError
+from ..logging import TaskLoggerAdapter
+from ..selectors.element_proxy import ElementProxy
+from ..selectors.manager import SelectorDefinition, SelectorManager
+from ..settings import Settings
+from ..types import DriverInfo, WebElementProtocol
+from ..utils import ensure_directory
+from ..windows.manager import WindowManager
+from ..windows.tab import Tab
 
 
 class Worker:
@@ -25,14 +29,14 @@ class Worker:
     """
 
     def __init__(
-        self,
-        worker_id: str,
-        driver_info: DriverInfo,
-        profile_dir: Path,
-        logger: "TaskLoggerAdapter",
-        settings: Settings,
-        engine: str = "selenium",
-        debug_artifacts_dir: Optional[Path] = None,
+            self,
+            worker_id: str,
+            driver_info: DriverInfo,
+            profile_dir: Path,
+            logger: "TaskLoggerAdapter",
+            settings: Settings,
+            engine: Optional[AutomationEngine] = None,
+            debug_artifacts_dir: Optional[Path] = None,
     ):
         """
         Inicializa a instância do Worker.
@@ -43,7 +47,7 @@ class Worker:
         self.profile_dir = profile_dir
         self.logger = logger
         self.debug_artifacts_dir = debug_artifacts_dir or (
-            self.profile_dir / "debug_artifacts"
+                self.profile_dir / "debug_artifacts"
         )
 
         self._driver: Optional[Any] = None
@@ -54,18 +58,16 @@ class Worker:
         )
         self.window_manager: Optional[WindowManager] = None
 
-        engine_map = {
-            "selenium": SeleniumEngine,
-            "playwright": PlaywrightEngine,
-        }
-        engine_cls = engine_map.get(engine, SeleniumEngine)
-        self._engine = cast(
-            AutomationEngine,
-            engine_cls(self, self.settings.get("browser", {})),
+        self._engine: AutomationEngine = engine or SeleniumChromeEngine(
+            self, self.settings.get("browser", {})
         )
 
         self.logger.worker_instance = self
         self.logger.info("Instância de Worker criada e pronta para iniciar.")
+
+    def set_engine(self, engine: AutomationEngine) -> None:
+        """Define ou substitui o engine de automação do worker."""
+        self._engine = engine
 
     @property
     def driver(self) -> Any:
@@ -91,8 +93,10 @@ class Worker:
         self.logger.info("Iniciando o worker e a sessão do navegador...")
         try:
             start_time = time.time()
+            if not self._engine:
+                raise WorkerError("Engine não configurado")
             self._driver = self._engine.start(self.profile_dir)
-            if isinstance(self._engine, SeleniumEngine):
+            if isinstance(self._engine, (SeleniumChromeEngine, SeleniumFirefoxEngine)):
                 self.window_manager = self._engine.window_manager
             self._is_started = True
             duration = (time.time() - start_time) * 1_000
@@ -108,7 +112,8 @@ class Worker:
             return
         self.logger.info("Finalizando o worker...")
         try:
-            self._engine.stop()
+            if self._engine:
+                self._engine.stop()
         finally:
             self._driver = None
             self._is_started = False
@@ -122,6 +127,8 @@ class Worker:
         self._ensure_started()
         self.logger.info(f"Navegando para a URL: {url}")
         try:
+            if not self._engine:
+                raise WorkerError("Engine não configurado")
             self._engine.navigate_to(url)
         except WebDriverException as e:
             timeout_ms = self.settings.get("timeouts", {}).get("page_load_ms", 45_000)
@@ -155,11 +162,15 @@ class Worker:
         O 'ElementProxy' chama 'selector_manager.find_element' diretamente.
         """
         self._ensure_started()
+        if not self._engine:
+            raise WorkerError("Engine não configurado")
         return self._engine.find_element(definition)
 
     def execute_script(self, script: str, *args: Any) -> Any:
         """Executa um roteiro JavaScript no contexto da página atual."""
         self._ensure_started()
+        if not self._engine:
+            raise WorkerError("Engine não configurado")
         return self._engine.execute_script(script, *args)
 
     # --- Métodos de Gestão de Abas (Janelas) ---

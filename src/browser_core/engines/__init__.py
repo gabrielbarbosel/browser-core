@@ -1,9 +1,11 @@
 from .base import AutomationEngine
-from .selenium_engine import SeleniumEngine
 from .playwright_engine import PlaywrightEngine
+from .selenium import SeleniumProvider, SeleniumChromeEngine, SeleniumFirefoxEngine
 
 __all__ = [
     "AutomationEngine",
-    "SeleniumEngine",
     "PlaywrightEngine",
+    "SeleniumProvider",
+    "SeleniumChromeEngine",
+    "SeleniumFirefoxEngine",
 ]
