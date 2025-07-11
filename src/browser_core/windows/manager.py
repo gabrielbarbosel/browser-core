@@ -12,15 +12,15 @@ from selenium.common.exceptions import (
     WebDriverException,
 )
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
-from ..exceptions import BrowserManagementError
 from .tab import Tab
+from ..exceptions import BrowserManagementError
 
 # Evita importação circular, mas permite o type hinting com a classe correta.
 if TYPE_CHECKING:
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
 class WindowManager:

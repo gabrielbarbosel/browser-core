@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 # Evita importação circular, permitindo que o type checker entenda a classe Worker.
 if TYPE_CHECKING:
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
 # noinspection GrazieInspection

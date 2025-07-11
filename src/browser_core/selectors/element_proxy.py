@@ -10,7 +10,7 @@ from ..utils import mask_sensitive_data
 
 # Evita importação circular, mantendo o type-hinting para a classe Worker.
 if TYPE_CHECKING:
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
 # noinspection GrazieInspection

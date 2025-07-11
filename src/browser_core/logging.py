@@ -16,7 +16,7 @@ from .types import LoggingConfig
 from .utils import mask_sensitive_data
 
 if TYPE_CHECKING:
-    from .worker import Worker
+    from .orchestration.worker import Worker
 
 
 class StructuredFormatter(logging.Formatter):
@@ -104,10 +104,10 @@ class TaskLoggerAdapter(logging.LoggerAdapter):
 
 # noinspection GrazieInspection
 def setup_task_logger(
-    logger_name: str,
-    log_dir: Path,
-    config: LoggingConfig,
-    consolidated_handler: Optional[logging.Handler] = None,
+        logger_name: str,
+        log_dir: Path,
+        config: LoggingConfig,
+        consolidated_handler: Optional[logging.Handler] = None,
 ) -> TaskLoggerAdapter:
     """
     Cria e configura um logger específico para uma única tarefa/worker.

@@ -65,12 +65,13 @@ Você pode inspecionar os snapshots existentes a qualquer momento com `browser-c
 #### Passo 1.2: Criar um Snapshot com Estado (ex: Login)
 
 Agora, a partir do `chrome-base`, crie um estado mais complexo, como uma sessão de usuário autenticada. Este processo é
-automatizado pelo `WorkforceManager`.
+automatizado pelo `Orchestrator`.
 
 ```python
 # scripts/create_login_snapshot.py
 import os
-from browser_core import WorkforceManager, Worker, create_selector, ConfigurationError
+
+from browser_core import Orchestrator, Worker, create_selector, ConfigurationError
 from browser_core.types import SelectorType
 
 # De preferência, carregue credenciais como variáveis de ambiente.
@@ -103,7 +104,7 @@ def perform_login(worker: Worker):
 
 # 2. Execute o orquestrador para criar o snapshot
 def main():
-    workforce = WorkforceManager()
+    workforce = Orchestrator()
 
     # [ATUALIZADO] IDs de snapshot mais claros
     BASE_SNAPSHOT = "chrome-base"  # O snapshot que acabamos de criar com a CLI
@@ -135,7 +136,7 @@ forma massivamente paralela, e **sem nunca mais precisar fazer login**.
 
 ```python
 # scripts/run_report_tasks.py
-from browser_core import WorkforceManager, Worker, create_selector, default_settings
+from browser_core import Orchestrator, Worker, create_selector, default_settings
 from browser_core.types import SelectorType
 
 
@@ -167,7 +168,7 @@ def main():
     settings = default_settings()
     settings["browser"]["headless"] = False  # Útil para depuração
 
-    workforce = WorkforceManager(settings)
+    workforce = Orchestrator(settings)
 
     reports_to_process = ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
 

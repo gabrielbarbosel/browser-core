@@ -5,7 +5,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..selectors.manager import SelectorDefinition
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
 class AutomationEngine(Protocol):

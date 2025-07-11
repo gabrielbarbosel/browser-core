@@ -4,6 +4,7 @@
 # armazenamento endereçável por conteúdo (semelhante ao Git) para gerenciar
 # os arquivos de perfis de navegador de forma extremamente eficiente.
 
+import fnmatch
 import hashlib
 import shutil
 from pathlib import Path
@@ -105,11 +106,30 @@ class StorageEngine:
             Um dicionário representando o "diff" entre os diretórios.
         """
         delta: Dict[RelativePath, ObjectHash] = {}
-        # Armazena (tamanho, hash) para otimizar a comparação.
+
+        ignore_patterns: List[str] = []
+        ignore_file = new_dir / ".snapshotignore"
+        if ignore_file.exists():
+            try:
+                with open(ignore_file, "r", encoding="utf-8") as f:
+                    ignore_patterns = [
+                        line.strip()
+                        for line in f
+                        if line.strip() and not line.strip().startswith("#")
+                    ]
+            except IOError:
+                pass
+
+        def should_ignore(rel_path: str) -> bool:
+            return any(fnmatch.fnmatch(rel_path, pat) for pat in ignore_patterns)
+
         base_files: Dict[RelativePath, Tuple[int, ObjectHash]] = {}
         for p in base_dir.rglob("*"):
             if p.is_file():
-                base_files[str(p.relative_to(base_dir))] = (
+                rel = str(p.relative_to(base_dir))
+                if should_ignore(rel):
+                    continue
+                base_files[rel] = (
                     p.stat().st_size,
                     self._hash_file(p),
                 )
@@ -119,6 +139,8 @@ class StorageEngine:
                 continue
 
             relative_path = str(new_file.relative_to(new_dir))
+            if should_ignore(relative_path):
+                continue
             new_size = new_file.stat().st_size
 
             # Compara metadados (tamanho) antes de calcular o hash.
