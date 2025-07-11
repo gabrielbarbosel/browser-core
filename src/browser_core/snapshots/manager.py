@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from ..exceptions import SnapshotError, StorageEngineError
 from ..storage.engine import StorageEngine
-from ..types import FilePath, SnapshotData, SnapshotId, DriverInfo, SnapshotDelta
+from ..types import FilePath, SnapshotData, SnapshotId, DriverInfo
 from ..utils import safe_json_dumps
 
 
@@ -27,7 +27,9 @@ class SnapshotManager:
         Inicializa o gestor de snapshots.
         """
         self.snapshots_dir = Path(snapshots_metadata_dir)
-        self.snapshots_dir.mkdir(parents=True, exist_ok=True)  # Garante que o diretório exista
+        self.snapshots_dir.mkdir(
+            parents=True, exist_ok=True
+        )  # Garante que o diretório exista
         self.storage_engine = storage_engine
 
     def get_snapshot_data(self, snapshot_id: SnapshotId) -> Optional[SnapshotData]:
@@ -39,11 +41,12 @@ class SnapshotManager:
             return None
         try:
             with open(snapshot_file, "r", encoding="utf-8") as f:
+                # A asserção de tipo aqui garante ao mypy que o retorno é compatível com SnapshotData
                 return json.loads(f.read())
         except (IOError, json.JSONDecodeError) as e:
             raise SnapshotError(
                 f"Falha ao ler ou decodificar o arquivo de metadados do snapshot: {snapshot_id}",
-                original_error=e
+                original_error=e,
             )
 
     def _resolve_snapshot_chain(self, snapshot_id: SnapshotId) -> List[SnapshotData]:
@@ -64,7 +67,9 @@ class SnapshotManager:
 
         return list(reversed(chain))
 
-    def materialize_for_worker(self, snapshot_id: SnapshotId, target_dir: Path) -> SnapshotData:
+    def materialize_for_worker(
+        self, snapshot_id: SnapshotId, target_dir: Path
+    ) -> SnapshotData:
         """
         Resolve a cadeia de um snapshot e instrui o StorageEngine a materializar o ambiente.
         """
@@ -82,14 +87,14 @@ class SnapshotManager:
         except (SnapshotError, StorageEngineError) as e:
             raise SnapshotError(
                 f"Falha ao materializar o ambiente para o snapshot '{snapshot_id}'",
-                original_error=e
+                original_error=e,
             )
 
     def create_base_snapshot(
-            self,
-            new_id: SnapshotId,
-            driver_info: DriverInfo,
-            metadata: Optional[Dict[str, Any]] = None
+        self,
+        new_id: SnapshotId,
+        driver_info: DriverInfo,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SnapshotData:
         """
         Cria um snapshot "raiz" (base), sem pai e com um perfil vazio.
@@ -99,22 +104,22 @@ class SnapshotManager:
 
         new_snapshot_data: SnapshotData = {
             "id": new_id,
-            "parent_id": None,  # Sem pai
+            "parent_id": None,
             "base_driver": driver_info,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "delta": {},  # Delta vazio, representa um perfil limpo
-            "metadata": metadata or {},
+            "delta": {},
+            "metadata": metadata if metadata is not None else {},
         }
 
         self._save_snapshot_data(new_id, new_snapshot_data)
         return new_snapshot_data
 
     def create_snapshot(
-            self,
-            new_id: SnapshotId,
-            parent_id: SnapshotId,
-            final_profile_dir: Path,
-            metadata: Optional[Dict[str, Any]] = None
+        self,
+        new_id: SnapshotId,
+        parent_id: SnapshotId,
+        final_profile_dir: Path,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> SnapshotData:
         """
         Cria um novo snapshot calculando o delta a partir de um perfil modificado.
@@ -129,7 +134,9 @@ class SnapshotManager:
         with tempfile.TemporaryDirectory(prefix="browser-core-base-") as temp_base_dir:
             base_dir_path = Path(temp_base_dir)
             self.materialize_for_worker(parent_id, base_dir_path)
-            delta = self.storage_engine.calculate_delta(base_dir_path, final_profile_dir)
+            delta = self.storage_engine.calculate_delta(
+                base_dir_path, final_profile_dir
+            )
 
         new_snapshot_data: SnapshotData = {
             "id": new_id,
@@ -137,7 +144,7 @@ class SnapshotManager:
             "base_driver": parent_snapshot["base_driver"],
             "created_at": datetime.now(timezone.utc).isoformat(),
             "delta": delta,
-            "metadata": metadata or {},
+            "metadata": metadata if metadata is not None else {},
         }
 
         self._save_snapshot_data(new_id, new_snapshot_data)
@@ -152,5 +159,5 @@ class SnapshotManager:
         except IOError as e:
             raise SnapshotError(
                 f"Falha ao salvar o arquivo de metadados do novo snapshot: {snapshot_file}",
-                original_error=e
+                original_error=e,
             )

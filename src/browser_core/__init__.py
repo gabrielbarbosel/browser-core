@@ -8,16 +8,11 @@ from .workforce import WorkforceManager
 from .snapshots.manager import SnapshotManager
 from .storage.engine import StorageEngine
 from .worker import Worker
+from .engines import SeleniumEngine, PlaywrightEngine, AutomationEngine
 from .settings import Settings, default_settings
 
 # --- Tipos e Enums Essenciais ---
-from .types import (
-    BrowserType,
-    SelectorType,
-    SnapshotId,
-    DriverInfo,
-    SnapshotData
-)
+from .types import BrowserType, SelectorType, SnapshotId, DriverInfo, SnapshotData
 
 # --- Funções de Conveniência ---
 from .selectors import create_selector, SelectorDefinition
@@ -44,22 +39,21 @@ __all__ = [
     "SnapshotManager",
     "Worker",  # Expor o Worker é útil para type hinting nas funções de tarefa.
     "StorageEngine",  # Expor para cenários de uso avançado ou customização.
-
+    "SeleniumEngine",
+    "PlaywrightEngine",
+    "AutomationEngine",
     # --- Configuração ---
     "Settings",
     "default_settings",
-
     # --- Seletores ---
     "create_selector",
     "SelectorDefinition",
-
     # --- Enums e Tipos de Dados Chave ---
     "BrowserType",
     "SelectorType",
     "SnapshotId",
     "DriverInfo",
     "SnapshotData",
-
     # --- Hierarquia de Exceções ---
     "BrowserCoreError",
     "ConfigurationError",

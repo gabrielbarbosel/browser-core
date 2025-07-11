@@ -13,10 +13,10 @@ class BrowserCoreError(Exception):
     """
 
     def __init__(
-            self,
-            message: str,
-            context: Optional[Dict[str, Any]] = None,
-            original_error: Optional[Exception] = None,
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+        original_error: Optional[Exception] = None,
     ):
         super().__init__(message)
         self.message = message
@@ -34,45 +34,52 @@ class BrowserCoreError(Exception):
 
 class StorageEngineError(BrowserCoreError):
     """Lançada para qualquer falha dentro do StorageEngine (ex: IO, hash)."""
+
     pass
 
 
 class SnapshotError(BrowserCoreError):
     """Lançada para falhas no SnapshotManager (ex: snapshot não encontrado, falha na materialização)."""
+
     pass
 
 
 class WorkerError(BrowserCoreError):
     """Lançada para erros relacionados ao ciclo de vida de um Worker (ex: falha ao iniciar/parar)."""
+
     pass
 
 
 class DriverError(BrowserCoreError):
     """Lançada para erros relacionados especificamente ao WebDriver (ex: falha no download ou inicialização)."""
+
     pass
 
 
 class ConfigurationError(BrowserCoreError):
     """Lançada quando uma configuração fornecida é inválida, ausente ou mal formatada."""
+
     pass
 
 
 class BrowserManagementError(BrowserCoreError):
     """Lançada para erros na gestão de janelas ou abas do navegador."""
+
     pass
 
 
 # --- Exceções de Operações do Navegador (Usadas pelo Worker) ---
 
+
 class ElementNotFoundError(BrowserCoreError):
     """Lançada quando um elemento esperado não é encontrado na página."""
 
     def __init__(
-            self,
-            message: str,
-            selector: Optional[str] = None,
-            timeout_ms: Optional[int] = None,
-            **kwargs: Any,
+        self,
+        message: str,
+        selector: Optional[str] = None,
+        timeout_ms: Optional[int] = None,
+        **kwargs: Any,
     ):
         context = kwargs.get("context", {})
         if selector:
@@ -84,9 +91,11 @@ class ElementNotFoundError(BrowserCoreError):
 
 class ElementActionError(BrowserCoreError):
     """Lançada quando uma ação num elemento falha (ex: click, send_keys)."""
+
     pass
 
 
 class PageLoadError(BrowserCoreError):
     """Lançada quando uma página ou URL falha ao carregar corretamente."""
+
     pass

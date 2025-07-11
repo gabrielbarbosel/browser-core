@@ -4,7 +4,8 @@
 # simplificando a inicialização e o gerenciamento de parâmetros do sistema.
 
 from pathlib import Path
-from typing_extensions import TypedDict
+from typing import cast, Any
+from typing_extensions import TypedDict, Literal
 
 # Importa as estruturas de configuração individuais do nosso arquivo de tipos.
 from .types import (
@@ -12,8 +13,16 @@ from .types import (
     LoggingConfig,
     PathsConfig,
     TimeoutConfig,
+    FilePath,
 )
 from .utils import deep_merge_dicts
+
+DerivedPathKey = Literal[
+    "objects_dir",
+    "snapshots_metadata_dir",
+    "tasks_logs_dir",
+    "driver_cache_dir",
+]
 
 
 class Settings(TypedDict, total=False):
@@ -29,6 +38,7 @@ class Settings(TypedDict, total=False):
         logging: Configurações do sistema de logs para as tarefas.
         paths: Configurações para os caminhos de saída dos artefatos.
     """
+
     browser: BrowserConfig
     timeouts: TimeoutConfig
     logging: LoggingConfig
@@ -61,7 +71,6 @@ def default_settings() -> Settings:
             "disable_gpu": True,
             "additional_args": [],
         },
-
         # --- Configurações de Timeout (em milissegundos) ---
         "timeouts": {
             "element_find_ms": 30_000,
@@ -70,7 +79,6 @@ def default_settings() -> Settings:
             # Timeout para operações de gestão de janelas, como esperar uma nova aba abrir.
             "window_management_ms": 10_000,
         },
-
         # --- Configurações de Logging ---
         "logging": {
             "level": "INFO",
@@ -79,7 +87,6 @@ def default_settings() -> Settings:
             "format_type": "detailed",  # Pode ser 'detailed' ou 'json'
             "mask_credentials": True,
         },
-
         # --- Configurações de Caminhos de Saída ---
         # Por padrão, todos os caminhos são derivados do 'output_dir'.
         # O usuário pode sobrescrever 'output_dir' para mover tudo de uma vez,
@@ -95,7 +102,7 @@ def default_settings() -> Settings:
     return settings
 
 
-def custom_settings(overrides: Settings) -> Settings:
+def custom_settings(overrides: dict[str, Any]) -> Settings:
     """
     Cria uma configuração completa mesclando um objeto de substituição
     com as configurações padrão.
@@ -117,23 +124,19 @@ def custom_settings(overrides: Settings) -> Settings:
     # recalculados com base no novo diretório, a menos que também tenham sido
     # definidos individualmente na substituição.
     if "output_dir" in custom_paths:
-        new_base_path = Path(custom_paths["output_dir"])
-        base["paths"]["output_dir"] = new_base_path
+        new_base_path = Path(cast(FilePath, custom_paths["output_dir"]))
+        base_paths = base["paths"]
+        base_paths["output_dir"] = new_base_path
 
-        derived_paths_keys = {
+        derived_paths_config: dict[DerivedPathKey, str] = {
             "objects_dir": "objects",
             "snapshots_metadata_dir": "snapshots",
             "tasks_logs_dir": "tasks_logs",
             "driver_cache_dir": "drivers_cache",
         }
 
-        for key, suffix in derived_paths_keys.items():
-            # Se o caminho específico não foi sobrescrito pelo usuário,
-            # ele é derivado do novo 'output_dir'. Caso contrário, o valor do
-            # usuário é mantido (lógica tratada pelo deep_merge_dicts abaixo).
+        for key, suffix in derived_paths_config.items():
             if key not in custom_paths:
-                base["paths"][key] = new_base_path / suffix
+                base_paths[key] = new_base_path / suffix
 
-    # A função de fusão profunda garante que todas as outras substituições
-    # do usuário, incluindo caminhos específicos, sejam aplicadas.
-    return deep_merge_dicts(base, overrides)
+    return cast(Settings, deep_merge_dicts(cast(dict[str, Any], base), cast(dict[str, Any], overrides)))

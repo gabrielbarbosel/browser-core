@@ -14,6 +14,7 @@ from .types import DriverInfo
 from .worker import Worker
 
 
+# noinspection GrazieInspection
 class WorkerFactory:
     """
     Uma fábrica responsável por criar e configurar instâncias de Worker.
@@ -32,11 +33,12 @@ class WorkerFactory:
         self.workforce_run_dir = workforce_run_dir
 
     def create_worker(
-            self,
-            driver_info: DriverInfo,
-            profile_dir: Path,
-            worker_id: str,
-            consolidated_log_handler: Optional[logging.Handler] = None,
+        self,
+        driver_info: DriverInfo,
+        profile_dir: Path,
+        worker_id: str,
+        consolidated_log_handler: Optional[logging.Handler] = None,
+        engine: str = "selenium",
     ) -> Worker:
         """
         Cria, configura e retorna uma nova instância de Worker.
@@ -46,6 +48,7 @@ class WorkerFactory:
             profile_dir: O diretório de perfil para o worker.
             worker_id: O identificador único para o novo worker.
             consolidated_log_handler: Handler opcional para um log consolidado.
+            engine: O motor de automação a utilizar ('selenium' ou 'playwright').
 
         Returns:
             Uma instância de Worker pronta para ser iniciada.
@@ -55,7 +58,7 @@ class WorkerFactory:
             logger_name=worker_id,
             log_dir=self.workforce_run_dir,
             config=self.settings.get("logging", {}),
-            consolidated_handler=consolidated_log_handler
+            consolidated_handler=consolidated_log_handler,
         )
 
         # Cria a instância do Worker, injetando suas dependências
@@ -65,6 +68,7 @@ class WorkerFactory:
             profile_dir=profile_dir,
             logger=task_logger,
             settings=self.settings,
+            engine=engine,
             debug_artifacts_dir=(self.workforce_run_dir / worker_id / "debug"),
         )
         return worker
