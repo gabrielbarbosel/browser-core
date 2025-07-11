@@ -27,6 +27,7 @@ reutilizar estados de navegador (como sessões com login efetuado) de forma ráp
   `worker.get()`, que torna a automação mais limpa e de fácil manutenção.
 * **Gestão Automática de Drivers**: O `browser-core` faz o download e gere o cache da versão exata do WebDriver
   necessária para cada snapshot, eliminando problemas de compatibilidade.
+* **Múltiplos Motores**: A mesma API funciona tanto com Selenium quanto com Playwright, bastando escolher o engine.
 * **CLI Integrada**: Uma ferramenta de linha de comando para listar, inspecionar e gerir seus snapshots e o
   armazenamento de objetos.
 
@@ -236,4 +237,12 @@ Se pretende contribuir para o `browser-core`, siga estes passos para configurar 
 3. **Instale o projeto em modo "editável" com as dependências de desenvolvimento:**
    ```bash
    pip install -e ".[dev]"
-    
+   ```
+
+4. **Execute os testes e verificações locais:**
+   ```bash
+   black -q src
+   pytest -q
+   ```
+
+5. **Crie sua branch e envie um Pull Request.**

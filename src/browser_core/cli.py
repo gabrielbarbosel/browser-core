@@ -27,18 +27,18 @@ class CliContext:
 
             storage_engine = StorageEngine(objects_dir=self.objects_dir)
             self.snapshot_manager = SnapshotManager(
-                snapshots_metadata_dir=self.snapshots_dir,
-                storage_engine=storage_engine
+                snapshots_metadata_dir=self.snapshots_dir, storage_engine=storage_engine
             )
         except (SnapshotError, StorageEngineError, ConfigurationError) as e:
-            click.echo(f"ERRO: Falha ao inicializar os gestores do browser-core: {e}", err=True)
+            click.echo(
+                f"ERRO: Falha ao inicializar os gestores do browser-core: {e}", err=True
+            )
             exit(1)
 
 
 @click.group()
 @click.version_option(
-    version=metadata.version("browser-core"),
-    prog_name="browser-core"
+    version=metadata.version("browser-core"), prog_name="browser-core"
 )
 @click.pass_context
 def cli(ctx: click.Context):
@@ -59,11 +59,17 @@ def snapshots():
     "--browser",
     type=click.Choice([b.value for b in BrowserType], case_sensitive=False),
     default=BrowserType.CHROME.value,
-    help="O tipo de navegador para este snapshot base."
+    help="O tipo de navegador para este snapshot base.",
 )
-@click.option("--version", default="latest", help="A versão do driver a ser usada (ex: 115.0.5790.170 ou 'latest').")
+@click.option(
+    "--version",
+    default="latest",
+    help="A versão do driver a ser usada (ex: 115.0.5790.170 ou 'latest').",
+)
 @click.pass_context
-def create_base_snapshot(ctx: click.Context, snapshot_id: str, browser: str, version: str):
+def create_base_snapshot(
+    ctx: click.Context, snapshot_id: str, browser: str, version: str
+):
     """
     Cria um snapshot 'raiz' (base) para um navegador específico.
 
@@ -76,13 +82,15 @@ def create_base_snapshot(ctx: click.Context, snapshot_id: str, browser: str, ver
     driver_info: DriverInfo = {"name": browser, "version": version}
     _metadata = {
         "description": f"Snapshot base para um perfil limpo do {browser.capitalize()} v{version}.",
-        "created_by": "cli"
+        "created_by": "cli",
     }
 
     try:
         snapshot_manager.create_base_snapshot(snapshot_id, driver_info, _metadata)
         click.secho(f"Snapshot base '{snapshot_id}' criado com sucesso!", fg="green")
-        click.echo("Agora pode usá-lo como 'base_snapshot_id' para criar novos snapshots.")
+        click.echo(
+            "Agora pode usá-lo como 'base_snapshot_id' para criar novos snapshots."
+        )
     except SnapshotError as e:
         click.secho(f"Erro ao criar snapshot: {e}", fg="red", err=True)
 
@@ -93,23 +101,28 @@ def list_snapshots(ctx: click.Context):
     """Lista todos os snapshots disponíveis."""
     snapshots_dir = ctx.obj.snapshots_dir
 
-    if not snapshots_dir.exists() or not any(snapshots_dir.glob('*.json')):
+    if not snapshots_dir.exists() or not any(snapshots_dir.glob("*.json")):
         click.echo(f"Nenhum snapshot encontrado em '{snapshots_dir}'.")
-        click.echo(f"Dica: Crie um snapshot base com 'browser-core snapshots create-base <ID>'")
+        click.echo(
+            f"Dica: Crie um snapshot base com 'browser-core snapshots create-base <ID>'"
+        )
         return
 
     click.echo(f"Snapshots encontrados em: {snapshots_dir}")
-    for snapshot_file in sorted(snapshots_dir.glob('*.json')):
+    for snapshot_file in sorted(snapshots_dir.glob("*.json")):
         try:
             data = json.loads(snapshot_file.read_text(encoding="utf-8"))
-            parent = data.get('parent_id') or '--- (Base)'
-            driver = data.get('base_driver', {}).get('name', 'N/A')
-            version = data.get('base_driver', {}).get('version', 'N/A')
+            parent = data.get("parent_id") or "--- (Base)"
+            driver = data.get("base_driver", {}).get("name", "N/A")
+            version = data.get("base_driver", {}).get("version", "N/A")
             click.echo(
                 f"- ID: {data['id']:<30} | Pai: {parent:<30} | Driver: {driver} v{version}"
             )
         except (json.JSONDecodeError, KeyError):
-            click.echo(f"[AVISO] Arquivo de snapshot mal formado ou incompleto: {snapshot_file.name}", err=True)
+            click.echo(
+                f"[AVISO] Arquivo de snapshot mal formado ou incompleto: {snapshot_file.name}",
+                err=True,
+            )
 
 
 @snapshots.command(name="inspect")
@@ -151,7 +164,7 @@ def clean_storage(ctx: click.Context, force: bool):
         paths.get("tasks_logs_dir"),
         paths.get("driver_cache_dir"),
     ]
-    # Converte para Path apenas os caminhos que foram definidos.
+    # Converte para Path apenas os caminhos definidos.
     dirs_to_clean = [Path(p) for p in potential_dirs_to_clean if p]
 
     click.echo("Os seguintes diretórios e todo o seu conteúdo serão APAGADOS:")

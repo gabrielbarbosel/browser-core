@@ -56,7 +56,7 @@ class StorageEngine:
         except IOError as e:
             raise StorageEngineError(
                 f"Não foi possível ler o arquivo para calcular o hash: {file_path}",
-                original_error=e
+                original_error=e,
             )
 
     def store_object_from_path(self, source_path: Path) -> ObjectHash:
@@ -82,12 +82,14 @@ class StorageEngine:
             except IOError as e:
                 raise StorageEngineError(
                     f"Falha ao copiar o arquivo para o armazenamento de objetos: {source_path}",
-                    original_error=e
+                    original_error=e,
                 )
 
         return file_hash
 
-    def calculate_delta(self, base_dir: Path, new_dir: Path) -> Dict[RelativePath, ObjectHash]:
+    def calculate_delta(
+        self, base_dir: Path, new_dir: Path
+    ) -> Dict[RelativePath, ObjectHash]:
         """
         Calcula a diferença (delta) entre um diretório base e um novo estado.
 
@@ -107,7 +109,10 @@ class StorageEngine:
         base_files: Dict[RelativePath, Tuple[int, ObjectHash]] = {}
         for p in base_dir.rglob("*"):
             if p.is_file():
-                base_files[str(p.relative_to(base_dir))] = (p.stat().st_size, self._hash_file(p))
+                base_files[str(p.relative_to(base_dir))] = (
+                    p.stat().st_size,
+                    self._hash_file(p),
+                )
 
         for new_file in new_dir.rglob("*"):
             if not new_file.is_file():
@@ -133,7 +138,9 @@ class StorageEngine:
 
         return delta
 
-    def materialize(self, deltas: List[Dict[RelativePath, ObjectHash]], target_dir: Path) -> None:
+    def materialize(
+        self, deltas: List[Dict[RelativePath, ObjectHash]], target_dir: Path
+    ) -> None:
         """
         Materializa um estado final aplicando uma sequência de deltas sobre um diretório.
 
@@ -176,5 +183,5 @@ class StorageEngine:
             except IOError as e:
                 raise StorageEngineError(
                     f"Falha ao materializar o objeto '{obj_hash}' em '{destination_path}'",
-                    original_error=e
+                    original_error=e,
                 )
