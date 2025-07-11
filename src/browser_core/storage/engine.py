@@ -4,6 +4,7 @@
 # armazenamento endereçável por conteúdo (semelhante ao Git) para gerenciar
 # os arquivos de perfis de navegador de forma extremamente eficiente.
 
+import fnmatch
 import hashlib
 import shutil
 from pathlib import Path
@@ -56,7 +57,7 @@ class StorageEngine:
         except IOError as e:
             raise StorageEngineError(
                 f"Não foi possível ler o arquivo para calcular o hash: {file_path}",
-                original_error=e
+                original_error=e,
             )
 
     def store_object_from_path(self, source_path: Path) -> ObjectHash:
@@ -82,12 +83,14 @@ class StorageEngine:
             except IOError as e:
                 raise StorageEngineError(
                     f"Falha ao copiar o arquivo para o armazenamento de objetos: {source_path}",
-                    original_error=e
+                    original_error=e,
                 )
 
         return file_hash
 
-    def calculate_delta(self, base_dir: Path, new_dir: Path) -> Dict[RelativePath, ObjectHash]:
+    def calculate_delta(
+        self, base_dir: Path, new_dir: Path
+    ) -> Dict[RelativePath, ObjectHash]:
         """
         Calcula a diferença (delta) entre um diretório base e um novo estado.
 
@@ -103,17 +106,41 @@ class StorageEngine:
             Um dicionário representando o "diff" entre os diretórios.
         """
         delta: Dict[RelativePath, ObjectHash] = {}
-        # Armazena (tamanho, hash) para otimizar a comparação.
+
+        ignore_patterns: List[str] = []
+        ignore_file = new_dir / ".snapshotignore"
+        if ignore_file.exists():
+            try:
+                with open(ignore_file, "r", encoding="utf-8") as f:
+                    ignore_patterns = [
+                        line.strip()
+                        for line in f
+                        if line.strip() and not line.strip().startswith("#")
+                    ]
+            except IOError:
+                pass
+
+        def should_ignore(rel_path: str) -> bool:
+            return any(fnmatch.fnmatch(rel_path, pat) for pat in ignore_patterns)
+
         base_files: Dict[RelativePath, Tuple[int, ObjectHash]] = {}
         for p in base_dir.rglob("*"):
             if p.is_file():
-                base_files[str(p.relative_to(base_dir))] = (p.stat().st_size, self._hash_file(p))
+                rel = str(p.relative_to(base_dir))
+                if should_ignore(rel):
+                    continue
+                base_files[rel] = (
+                    p.stat().st_size,
+                    self._hash_file(p),
+                )
 
         for new_file in new_dir.rglob("*"):
             if not new_file.is_file():
                 continue
 
             relative_path = str(new_file.relative_to(new_dir))
+            if should_ignore(relative_path):
+                continue
             new_size = new_file.stat().st_size
 
             # Compara metadados (tamanho) antes de calcular o hash.
@@ -133,7 +160,9 @@ class StorageEngine:
 
         return delta
 
-    def materialize(self, deltas: List[Dict[RelativePath, ObjectHash]], target_dir: Path) -> None:
+    def materialize(
+        self, deltas: List[Dict[RelativePath, ObjectHash]], target_dir: Path
+    ) -> None:
         """
         Materializa um estado final aplicando uma sequência de deltas sobre um diretório.
 
@@ -176,5 +205,5 @@ class StorageEngine:
             except IOError as e:
                 raise StorageEngineError(
                     f"Falha ao materializar o objeto '{obj_hash}' em '{destination_path}'",
-                    original_error=e
+                    original_error=e,
                 )

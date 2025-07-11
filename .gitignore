@@ -1,4 +1,4 @@
-# Byte-compiled / ficheiros otimizados
+# Byte-compiled / arquivos otimizados
 __pycache__/
 *.py[cod]
 *$py.class
@@ -25,19 +25,19 @@ sdist/
 wheel/
 *.whl
 
-# Ficheiros de configuração de IDEs e editores
+# Arquivos de configuração de IDEs e editores
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Ficheiros de Output gerados pelo browser-core
+# Arquivos de Output gerados pelo browser-core
 # É uma boa prática ignorar o diretório de output padrão
 /browser-core-output/
 *.log
 *.sqlite
 
-# Ficheiros de Teste
+# Arquivos de Teste
 .pytest_cache/
 .coverage
 htmlcov/
@@ -45,13 +45,13 @@ nosetests.xml
 coverage.xml
 *.cover
 
-# Ficheiros de Sistema Operacional
+# Arquivos de Sistema Operacional
 .DS_Store
 Thumbs.db
 
-# Ficheiros de ambiente (NUNCA comitar segredos)
+# Arquivos de ambiente (NUNCA comitar segredos)
 .env
 .env.*
 
-# Ficheiros de configuração de credenciais locais
+# Arquivos de configuração de credenciais locais
 .pypirc

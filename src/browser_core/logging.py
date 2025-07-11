@@ -16,7 +16,7 @@ from .types import LoggingConfig
 from .utils import mask_sensitive_data
 
 if TYPE_CHECKING:
-    from .worker import Worker
+    from .orchestration.worker import Worker
 
 
 class StructuredFormatter(logging.Formatter):
@@ -91,7 +91,7 @@ class TaskLoggerAdapter(logging.LoggerAdapter):
 
         kwargs["extra"].update(self.extra)
 
-        if self.worker_instance and self.worker_instance.is_running():
+        if self.worker_instance and self.worker_instance.is_running:
             try:
                 if current_tab := self.worker_instance.current_tab:
                     kwargs["extra"]["tab_name"] = current_tab.name
@@ -107,7 +107,7 @@ def setup_task_logger(
         logger_name: str,
         log_dir: Path,
         config: LoggingConfig,
-        consolidated_handler: Optional[logging.Handler] = None
+        consolidated_handler: Optional[logging.Handler] = None,
 ) -> TaskLoggerAdapter:
     """
     Cria e configura um logger específico para uma única tarefa/worker.
@@ -134,7 +134,10 @@ def setup_task_logger(
     if config.get("to_file", True) and log_dir:
         individual_log_path = log_dir / f"{logger_name}.log"
         file_handler = logging.handlers.RotatingFileHandler(
-            filename=individual_log_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+            filename=individual_log_path,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
         )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)

@@ -4,17 +4,25 @@
 # detalhes de implementação de cada driver.
 
 from pathlib import Path
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, Any
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.core.driver_cache import DriverCacheManager
+from webdriver_manager.core.manager import DriverManager as WDMBaseManager
 
 from ..exceptions import DriverError, ConfigurationError
 from ..settings import Settings
-from ..types import BrowserConfig, DriverInfo, FilePath, LoggerProtocol, BrowserType, WebDriverProtocol
+from ..types import (
+    BrowserConfig,
+    DriverInfo,
+    FilePath,
+    LoggerProtocol,
+    BrowserType,
+    WebDriverProtocol,
+)
 
 
 class DriverManager:
@@ -42,7 +50,9 @@ class DriverManager:
             self.driver_cache_dir = Path(driver_cache_path_str)
             self._ensure_cache_dir()
         else:
-            self.logger.info("Nenhum 'driver_cache_dir' fornecido. A usar o diretório de cache padrão do sistema.")
+            self.logger.info(
+                "Nenhum 'driver_cache_dir' fornecido. A usar o diretório de cache padrão do sistema."
+            )
 
         self._driver_factories: Dict[str, Callable] = {
             BrowserType.CHROME.value: self._create_chrome_driver,
@@ -85,8 +95,14 @@ class DriverManager:
         try:
             return factory(requested_version, browser_config, user_profile_dir)
         except Exception as e:
-            self.logger.error(f"Erro inesperado ao criar o driver para {browser_name}: {e}", exc_info=True)
-            raise DriverError(f"Erro inesperado ao criar o driver para {browser_name}", original_error=e)
+            self.logger.error(
+                f"Erro inesperado ao criar o driver para {browser_name}: {e}",
+                exc_info=True,
+            )
+            raise DriverError(
+                f"Erro inesperado ao criar o driver para {browser_name}",
+                original_error=e,
+            )
 
     def _create_chrome_driver(
             self,
@@ -98,22 +114,51 @@ class DriverManager:
         options = ChromeOptions()
         self._apply_common_chrome_options(options, config, profile_dir)
 
-        cache = DriverCacheManager(root_dir=str(self.driver_cache_dir)) if self.driver_cache_dir else None
+        cache = (
+            DriverCacheManager(root_dir=str(self.driver_cache_dir))
+            if self.driver_cache_dir
+            else None
+        )
 
-        driver_version_arg = requested_version if requested_version.lower() != "latest" else None
+        driver_version_arg = (
+            requested_version
+            if requested_version and requested_version.lower() != "latest"
+            else None
+        )
 
         # O construtor do ChromeDriverManager recebe o 'cache_manager'
-        manager = ChromeDriverManager(driver_version=driver_version_arg, cache_manager=cache)
+        manager = ChromeDriverManager(
+            driver_version=driver_version_arg, cache_manager=cache
+        )
 
         driver_path = manager.install()
 
-        installed_driver_version = manager.get_driver().get_version()
-        self.logger.info(f"A iniciar ChromeDriver v{installed_driver_version} a partir de: {driver_path}")
+        installed_driver_version = self._get_driver_version(manager)
+        self.logger.info(
+            f"A iniciar ChromeDriver v{installed_driver_version} a partir de: {driver_path}"
+        )
 
         service = ChromeService(executable_path=driver_path)
         driver = webdriver.Chrome(service=service, options=options)
 
         return driver
+
+    def _get_driver_version(self, manager: WDMBaseManager) -> str:
+        """Obtém a versão do driver a partir da instância do manager."""
+        try:
+            driver_obj: Any = getattr(manager, "driver", None)
+            if driver_obj and hasattr(driver_obj, "get_version"):
+                return driver_obj.get_version()
+        except AttributeError:
+            self.logger.debug("Atributo 'driver' ou 'get_version' não está disponível.")
+        except Exception as e:
+            self.logger.warning(
+                f"Erro inesperado ao obter a versão do driver: {e}",
+                exc_info=True,
+            )
+
+        self.logger.warning("Não foi possível obter a versão do driver dinamicamente.")
+        return "desconhecida"
 
     def _apply_common_chrome_options(
             self, options: ChromeOptions, config: BrowserConfig, profile_dir: FilePath
@@ -124,10 +169,14 @@ class DriverManager:
         options.add_experimental_option("useAutomationExtension", False)
 
         if config.get("user_agent"):
-            self.logger.debug(f"A usar User-Agent fornecido na configuração: {config['user_agent']}")
+            self.logger.debug(
+                f"A usar User-Agent fornecido na configuração: {config['user_agent']}"
+            )
             options.add_argument(f"--user-agent={config['user_agent']}")
         else:
-            self.logger.debug("Nenhum User-Agent customizado fornecido. O padrão do WebDriver será usado.")
+            self.logger.debug(
+                "Nenhum User-Agent customizado fornecido. O padrão do WebDriver será usado."
+            )
 
         if config.get("headless", True):
             options.add_argument("--headless=new")
@@ -149,7 +198,9 @@ class DriverManager:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
-        window_size = f"{config.get('window_width', 1_920)},{config.get('window_height', 1_080)}"
+        window_size = (
+            f"{config.get('window_width', 1_920)},{config.get('window_height', 1_080)}"
+        )
         options.add_argument(f"--window-size={window_size}")
 
         for arg in config.get("additional_args", []):

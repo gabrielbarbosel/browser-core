@@ -4,18 +4,20 @@ from typing import TYPE_CHECKING
 
 # Evita importação circular, permitindo que o type checker entenda a classe Worker.
 if TYPE_CHECKING:
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
+# noinspection GrazieInspection
 class Tab:
     """Representa e controla uma única aba do navegador de forma orientada a objetos."""
 
     def __init__(self, name: str, handle: str, worker: "Worker"):
+        # noinspection SpellCheckingInspection
         """
         Inicializa a representação de uma aba.
 
         Args:
-            name: O nome lógico da aba (ex: 'main', 'relatorios').
+            name: O nome lógico da aba (ex: 'main', 'relatórios').
             handle: O identificador único da aba fornecido pelo WebDriver.
             worker: A instância do Worker que gerencia esta aba.
         """

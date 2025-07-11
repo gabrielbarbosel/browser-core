@@ -4,7 +4,7 @@
 # localização de elementos na página usando diferentes estratégias, tornando
 # a automação mais resiliente a pequenas mudanças no front-end.
 
-from typing import Any, List, Optional, Dict, Tuple, Union, cast
+from typing import List, Optional, Dict, Tuple, Union, cast
 
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
@@ -15,7 +15,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from ..exceptions import ConfigurationError, ElementNotFoundError
 from ..settings import Settings
-from ..types import LoggerProtocol, SelectorType, SelectorValue, TimeoutMs, WebDriverProtocol, WebElementProtocol
+from ..types import (
+    LoggerProtocol,
+    SelectorType,
+    SelectorValue,
+    TimeoutMs,
+    WebDriverProtocol,
+    WebElementProtocol,
+)
 from ..utils import validate_selector
 
 
@@ -29,11 +36,13 @@ class SelectorDefinition:
     """
 
     def __init__(
-            self,
-            primary: SelectorValue,
-            selector_type: SelectorType = SelectorType.XPATH,
-            fallback: Optional[SelectorValue] = None,
-            timeout_ms: Optional[TimeoutMs] = None,  # Permitir None para usar o padrão global
+        self,
+        primary: SelectorValue,
+        selector_type: SelectorType = SelectorType.XPATH,
+        fallback: Optional[SelectorValue] = None,
+        timeout_ms: Optional[
+            TimeoutMs
+        ] = None,  # Permitir None para usar o padrão global
     ):
         self.primary = validate_selector(primary)
         self.selector_type = selector_type
@@ -42,10 +51,10 @@ class SelectorDefinition:
 
 
 def create_selector(
-        primary: SelectorValue,
-        selector_type: SelectorType = SelectorType.XPATH,
-        fallback: Optional[SelectorValue] = None,
-        timeout_ms: Optional[TimeoutMs] = None
+    primary: SelectorValue,
+    selector_type: SelectorType = SelectorType.XPATH,
+    fallback: Optional[SelectorValue] = None,
+    timeout_ms: Optional[TimeoutMs] = None,
 ) -> SelectorDefinition:
     """
     Função 'factory' para criar instâncias de SelectorDefinition de forma conveniente.
@@ -54,10 +63,11 @@ def create_selector(
         primary=primary,
         selector_type=selector_type,
         fallback=fallback,
-        timeout_ms=timeout_ms
+        timeout_ms=timeout_ms,
     )
 
 
+# noinspection GrazieInspection
 class SelectorManager:
     """
     Gere a lógica de encontrar elementos na página usando 'SelectorDefinitions'.
@@ -65,6 +75,7 @@ class SelectorManager:
     Abstrai a complexidade do Selenium, adiciona lógicas de resiliência como
     fallback e fornece um logging claro sobre as operações de busca.
     """
+
     _SELECTOR_MAPPING: Dict[SelectorType, str] = {
         SelectorType.XPATH: By.XPATH,
         SelectorType.CSS: By.CSS_SELECTOR,
@@ -86,12 +97,14 @@ class SelectorManager:
         """
         self.logger = logger
         self.settings = settings
-        self.default_timeout_ms = self.settings.get("timeouts", {}).get("element_find_ms", 30_000)
+        self.default_timeout_ms = self.settings.get("timeouts", {}).get(
+            "element_find_ms", 30_000
+        )
 
     def find_element(
-            self,
-            driver_or_element: Union[WebDriverProtocol, WebElementProtocol],
-            definition: SelectorDefinition
+        self,
+        driver_or_element: Union[WebDriverProtocol, WebElementProtocol],
+        definition: SelectorDefinition,
     ) -> Tuple[WebElementProtocol, SelectorValue]:
         """
         Encontra um único elemento na página (ou dentro de outro elemento) usando a estratégia de fallback.
@@ -106,8 +119,14 @@ class SelectorManager:
         Raises:
             ElementNotFoundError: Se o elemento não for encontrado.
         """
-        timeout = definition.timeout_ms if definition.timeout_ms is not None else self.default_timeout_ms
-        self.logger.debug(f"A procurar elemento com seletor primário: '{definition.primary}' (Timeout: {timeout}ms)")
+        timeout = (
+            definition.timeout_ms
+            if definition.timeout_ms is not None
+            else self.default_timeout_ms
+        )
+        self.logger.debug(
+            f"A procurar elemento com seletor primário: '{definition.primary}' (Timeout: {timeout}ms)"
+        )
 
         try:
             element = self._find_with_wait(
@@ -122,9 +141,14 @@ class SelectorManager:
             if definition.fallback:
                 try:
                     element = self._find_with_wait(
-                        driver_or_element, definition.fallback, definition.selector_type, timeout
+                        driver_or_element,
+                        definition.fallback,
+                        definition.selector_type,
+                        timeout,
                     )
-                    self.logger.info(f"Elemento encontrado com o seletor de fallback: '{definition.fallback}'")
+                    self.logger.info(
+                        f"Elemento encontrado com o seletor de fallback: '{definition.fallback}'"
+                    )
                     # Retorna o seletor de fallback usado
                     return element, definition.fallback
                 except (NoSuchElementException, TimeoutException) as fallback_error:
@@ -133,24 +157,29 @@ class SelectorManager:
                         context={
                             "primary_selector": definition.primary,
                             "fallback_selector": definition.fallback,
-                            "timeout_ms": timeout
+                            "timeout_ms": timeout,
                         },
                         original_error=fallback_error,
                     )
             raise ElementNotFoundError(
                 f"Elemento não encontrado com seletor: '{definition.primary}'",
-                context={
-                    "selector": definition.primary,
-                    "timeout_ms": timeout
-                },
+                context={"selector": definition.primary, "timeout_ms": timeout},
             )
 
-    def find_elements(self, driver: WebDriverProtocol, definition: SelectorDefinition) -> List[WebElementProtocol]:
+    def find_elements(
+        self, driver: WebDriverProtocol, definition: SelectorDefinition
+    ) -> List[WebElementProtocol]:
         """
         Encontra múltiplos elementos na página que correspondem a um seletor.
         """
-        timeout = definition.timeout_ms if definition.timeout_ms is not None else self.default_timeout_ms
-        self.logger.debug(f"A procurar múltiplos elementos com seletor: '{definition.primary}' (Timeout: {timeout}ms)")
+        timeout = (
+            definition.timeout_ms
+            if definition.timeout_ms is not None
+            else self.default_timeout_ms
+        )
+        self.logger.debug(
+            f"A procurar múltiplos elementos com seletor: '{definition.primary}' (Timeout: {timeout}ms)"
+        )
         by = self._get_selenium_by(definition.selector_type)
         try:
             wait = WebDriverWait(cast(WebDriver, driver), timeout / 1_000.0)
@@ -158,26 +187,32 @@ class SelectorManager:
                 EC.presence_of_all_elements_located((by, definition.primary))
             )
         except TimeoutException:
-            self.logger.warning(f"Nenhum elemento encontrado para o seletor '{definition.primary}' dentro do timeout.")
+            self.logger.warning(
+                f"Nenhum elemento encontrado para o seletor '{definition.primary}' dentro do timeout."
+            )
             return []
 
     def _find_with_wait(
-            self,
-            context: Union[WebDriverProtocol, WebElementProtocol],
-            selector: str,
-            selector_type: SelectorType,
-            timeout_ms: int
+        self,
+        context: Union[WebDriverProtocol, WebElementProtocol],
+        selector: str,
+        selector_type: SelectorType,
+        timeout_ms: int,
     ) -> WebElementProtocol:
         # Método auxiliar privado que usa a espera explícita do Selenium.
         by = self._get_selenium_by(selector_type)
         # O contexto da espera agora é o driver ou um elemento pai
-        wait = WebDriverWait(cast(Union[WebDriver, WebElement], context), timeout_ms / 1_000.0)
-        # Usa uma lambda para que `find_element` seja chamado no contexto correto
+        wait = WebDriverWait(
+            cast(Union[WebDriver, WebElement], context), timeout_ms / 1_000.0
+        )
+        # Usa um lambda para que 'find_element' seja chamado no contexto correto
         return wait.until(lambda d: d.find_element(by, selector))
 
     def _get_selenium_by(self, selector_type: SelectorType) -> str:
         # Mapeia o nosso Enum 'SelectorType' para o objeto 'By' do Selenium.
         by_value = self._SELECTOR_MAPPING.get(selector_type)
         if not by_value:
-            raise ConfigurationError(f"Tipo de seletor desconhecido ou não suportado: {selector_type}")
+            raise ConfigurationError(
+                f"Tipo de seletor desconhecido ou não suportado: {selector_type}"
+            )
         return by_value

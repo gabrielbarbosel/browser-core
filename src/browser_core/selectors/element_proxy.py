@@ -10,9 +10,10 @@ from ..utils import mask_sensitive_data
 
 # Evita importação circular, mantendo o type-hinting para a classe Worker.
 if TYPE_CHECKING:
-    from ..worker import Worker
+    from ..orchestration.worker import Worker
 
 
+# noinspection GrazieInspection
 class ElementProxy:
     """
     Representa um elemento da página de forma "preguiçosa" (lazy).
@@ -22,10 +23,10 @@ class ElementProxy:
     """
 
     def __init__(
-            self,
-            worker: "Worker",
-            selector: SelectorDefinition,
-            parent: Optional["ElementProxy"] = None
+        self,
+        worker: "Worker",
+        selector: SelectorDefinition,
+        parent: Optional["ElementProxy"] = None,
     ):
         """
         Inicializa o proxy do elemento.
@@ -47,14 +48,22 @@ class ElementProxy:
         A busca é feita a partir do pai, se existir, ou do driver.
         """
         if self._element is None:
-            search_context = self._parent._find() if self._parent else self._worker.driver
+            search_context = (
+                self._parent._find() if self._parent else self._worker.driver
+            )
 
             #  A busca é feita pelo SelectorManager, que retorna o elemento e o seletor usado
-            self._worker.logger.debug(f"ElementProxy: A procurar elemento com seletor '{self._selector.primary}'...")
-            self._element, self._used_selector = self._worker.selector_manager.find_element(
-                search_context, self._selector
+            self._worker.logger.debug(
+                f"ElementProxy: A procurar elemento com seletor '{self._selector.primary}'..."
             )
-            self._worker.logger.debug(f"ElementProxy: Elemento encontrado com '{self._used_selector}' e cacheado.")
+            self._element, self._used_selector = (
+                self._worker.selector_manager.find_element(
+                    search_context, self._selector
+                )
+            )
+            self._worker.logger.debug(
+                f"ElementProxy: Elemento encontrado com '{self._used_selector}' e cacheado."
+            )
 
         return self._element
 
@@ -75,7 +84,9 @@ class ElementProxy:
     def click(self) -> "ElementProxy":
         """Executa a ação de clique no elemento."""
         self._find()  # Garante que _used_selector seja preenchido
-        self._worker.logger.info(f"A clicar no elemento definido por: '{self._used_selector}'")
+        self._worker.logger.info(
+            f"A clicar no elemento definido por: '{self._used_selector}'"
+        )
         self._element.click()
         return self
 
@@ -87,7 +98,9 @@ class ElementProxy:
         masked_text = mask_sensitive_data(text_to_send)
 
         self._find()  # Garante que _used_selector seja preenchido
-        self._worker.logger.info(f"A enviar texto '{masked_text}' para o elemento: '{self._used_selector}'")
+        self._worker.logger.info(
+            f"A enviar texto '{masked_text}' para o elemento: '{self._used_selector}'"
+        )
 
         self._element.send_keys(text_to_send)
         return self
@@ -95,15 +108,21 @@ class ElementProxy:
     def clear(self) -> "ElementProxy":
         """Limpa o conteúdo de um campo de texto (input, textarea)."""
         self._find()  # Garante que _used_selector seja preenchido
-        self._worker.logger.info(f"A limpar o conteúdo do elemento: '{self._used_selector}'")
+        self._worker.logger.info(
+            f"A limpar o conteúdo do elemento: '{self._used_selector}'"
+        )
         self._element.clear()
         return self
 
-    def find_nested_element(self, nested_selector: SelectorDefinition) -> "ElementProxy":
+    def find_nested_element(
+        self, nested_selector: SelectorDefinition
+    ) -> "ElementProxy":
         """
         Busca um elemento aninhado dentro deste elemento, retornando um novo ElementProxy.
         """
-        self._worker.logger.debug(f"A criar proxy para elemento aninhado com seletor '{nested_selector.primary}'")
+        self._worker.logger.debug(
+            f"A criar proxy para elemento aninhado com seletor '{nested_selector.primary}'"
+        )
         # O novo proxy recebe `self` como seu contexto de busca (pai).
         return ElementProxy(worker=self._worker, selector=nested_selector, parent=self)
 

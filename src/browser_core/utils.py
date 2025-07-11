@@ -1,6 +1,6 @@
 # Fornece funções utilitárias genéricas para o framework browser-core.
 #
-# Este módulo contém funções auxiliares e independentes que são usadas
+# Este módulo contém funções auxiliares e independentes usadas
 # em diversas partes do sistema para tarefas comuns como validação,
 # manipulação de arquivos e formatação de dados.
 
@@ -8,7 +8,18 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union, List, Generator
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    List,
+    Generator,
+)
 
 from .exceptions import ConfigurationError
 from .types import FilePath
@@ -16,13 +27,14 @@ from .types import FilePath
 D = TypeVar("D", bound=Dict[str, Any])
 
 
+# noinspection GrazieInspection
 def validate_timeout(timeout: Union[int, float], min_value: int = 100) -> int:
     """
     Valida e normaliza um valor de timeout para milissegundos.
 
     Args:
         timeout: O valor de timeout a ser validado (em ms).
-        min_value: O valor mínimo permitido para o timeout.
+        min_value: O Valor mínimo permitido para o timeout.
 
     Returns:
         O timeout validado como um inteiro.
@@ -82,10 +94,10 @@ def deep_merge_dicts(base: D, override: Dict[str, Any]) -> D:
 
 
 def retry_on_exception(
-        func: Callable[..., Any],
-        max_attempts: int = 3,
-        delay_ms: int = 1000,
-        exceptions_to_catch: Tuple[Type[Exception], ...] = (Exception,),
+    func: Callable[..., Any],
+    max_attempts: int = 3,
+    delay_ms: int = 1000,
+    exceptions_to_catch: Tuple[Type[Exception], ...] = (Exception,),
 ) -> Any:
     """Executa uma função e tenta executá-la novamente em caso de exceções específicas."""
     last_exception: Optional[Exception] = None
@@ -106,13 +118,13 @@ def retry_on_exception(
 def mask_sensitive_data(data: str) -> str:
     """Mascara dados sensíveis numa string, como palavras-passe ou tokens."""
     # Padrão melhorado para capturar variações comuns de chaves de credenciais.
-    patterns = [r"""(?i)(password|token|senha|credencial|secret|key)['"]?\s*[:=]\s*['"]?([\w.-]+)"""]
+    patterns = [
+        r"""(?i)(password|token|senha|credencial|secret|key)['"]?\s*[:=]\s*['"]?([\w.-]+)"""
+    ]
     masked_data = data
     for pattern in patterns:
         masked_data = re.sub(
-            pattern,
-            lambda m: m.group(0).replace(m.group(2), "***"),
-            masked_data
+            pattern, lambda m: m.group(0).replace(m.group(2), "***"), masked_data
         )
     return masked_data
 

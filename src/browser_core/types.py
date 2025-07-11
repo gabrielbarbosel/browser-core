@@ -48,8 +48,10 @@ Ex: {"Default/Cookies": "hash123", "Extensions/uBlock/manifest.json": "hash456"}
 # --- Enums para Valores Controlados ---
 # ==============================================================================
 
+
 class BrowserType(Enum):
     """Define os tipos de navegadores suportados pela automação."""
+
     CHROME = "chrome"
     FIREFOX = "firefox"
     EDGE = "edge"
@@ -58,6 +60,7 @@ class BrowserType(Enum):
 
 class SelectorType(Enum):
     """Define os tipos de seletores de elementos da web suportados."""
+
     XPATH = "xpath"
     CSS = "css"
     ID = "id"
@@ -70,6 +73,7 @@ class SelectorType(Enum):
 
 class LogLevel(Enum):
     """Define os níveis de log padrão."""
+
     DEBUG = "DEBUG"
     INFO = "INFO"
     WARNING = "WARNING"
@@ -79,6 +83,7 @@ class LogLevel(Enum):
 
 class TaskStatus(Enum):
     """Define os possíveis status de uma tarefa processada pelo WorkforceManager."""
+
     SUCCESS = "SUCCESS"
     SETUP_FAILED = "SETUP_FAILED"
     TASK_FAILED = "TASK_FAILED"
@@ -88,10 +93,12 @@ class TaskStatus(Enum):
 # --- Dicionários de Configuração (TypedDicts) ---
 # ==============================================================================
 
+
 class BrowserConfig(TypedDict, total=False):
     """
     Define a estrutura para as configurações do navegador que um Worker pode usar.
     """
+
     headless: bool
     window_width: int
     window_height: int
@@ -103,6 +110,7 @@ class BrowserConfig(TypedDict, total=False):
 
 class TimeoutConfig(TypedDict, total=False):
     """Define a estrutura para as configurações de timeout (em ms)."""
+
     element_find_ms: TimeoutMs
     page_load_ms: TimeoutMs
     script_ms: TimeoutMs
@@ -112,6 +120,7 @@ class TimeoutConfig(TypedDict, total=False):
 
 class LoggingConfig(TypedDict, total=False):
     """Define a estrutura para as configurações de logging."""
+
     level: str
     to_file: bool
     to_console: bool
@@ -123,6 +132,7 @@ class PathsConfig(TypedDict, total=False):
     """
     Define a estrutura para os caminhos de saída personalizáveis.
     """
+
     output_dir: FilePath
     objects_dir: FilePath
     snapshots_metadata_dir: FilePath
@@ -134,14 +144,17 @@ class PathsConfig(TypedDict, total=False):
 # --- Estruturas de Dados da Arquitetura (TypedDicts) ---
 # ==============================================================================
 
+
 class DriverInfo(TypedDict):
     """Metadados sobre a versão do WebDriver vinculada a uma cadeia de snapshots."""
+
     name: str  # Ex: "chrome"
     version: str  # Ex: "115.0.5790.170"
 
 
 class SnapshotData(TypedDict):
     """Define a estrutura completa de metadados para um snapshot, salva em JSON."""
+
     id: SnapshotId
     parent_id: Optional[SnapshotId]
     base_driver: DriverInfo
@@ -153,6 +166,7 @@ class SnapshotData(TypedDict):
 # ==============================================================================
 # --- Protocolos para Inversão de Dependência (SOLID) ---
 # ==============================================================================
+
 
 class WebElementProtocol(Protocol):
     """Define o contrato mínimo para um WebElement, permitindo buscas aninhadas."""

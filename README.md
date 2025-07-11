@@ -1,239 +1,237 @@
 # Browser-Core
 
-[![PyPI version](https://badge.fury.io/py/browser-core.svg)](https://badge.fury.io/py/browser-core)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Versão PyPI](https://badge.fury.io/py/browser-core.svg)](https://badge.fury.io/py/browser-core)
+[![Licença: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Browser-Core** é uma plataforma de orquestração de ambientes de navegador, projetada para automação web em escala, com
-foco em eficiência, isolamento e reprodutibilidade total.
+**Browser-Core** é uma plataforma completa para orquestração de navegadores. O projeto nasceu para simplificar
+automações em larga escala, garantindo isolamento total dos ambientes e reprodutibilidade dos estados de cada sessão.
+
+Neste documento você encontrará uma visão detalhada de como funciona o framework, dicas de utilização e todos os
+recursos disponíveis.
+
+## Sumário
+
+1. [Introdução](#introdução)
+2. [Instalação](#instalação)
+3. [Conceitos Fundamentais](#conceitos-fundamentais)
+4. [Fluxo de Trabalho](#fluxo-de-trabalho)
+5. [Exemplos de Uso](#exemplos-de-uso)
+6. [Comandos da CLI](#comandos-da-cli)
+7. [Dicas Avançadas](#dicas-avançadas)
+8. [Contribuindo](#contribuindo)
+9. [Licença](#licença)
 
 ---
 
-## Visão Geral
+## Introdução
 
-O Browser-Core evoluiu de uma simples biblioteca de automação para uma plataforma de orquestração completa. Ele permite
-provisionar, gerir e executar frotas de "Workers" (navegadores) em paralelo, com uma arquitetura robusta e elegante.
+Automatizar tarefas de navegador exige controle refinado sobre perfis, versões de drivers e paralelismo. O *
+*Browser-Core** abstrai essa complexidade oferecendo:
 
-A base do framework é um **sistema de snapshots em camadas**, análogo ao Docker e Git, que permite criar, derivar e
-reutilizar estados de navegador (como sessões com login efetuado) de forma rápida, eficiente em disco e, crucialmente, *
-*100% reprodutível**.
+- Camadas de snapshots reutilizáveis para capturar o estado exato do navegador (cookies, localStorage, extensões, etc.).
+- Workers isolados que partem desses snapshots e executam tarefas independentes em paralelo.
+- Integração transparente com Selenium e Playwright, bastando escolher o motor desejado.
+- Uma CLI poderosa para manipular snapshots e gerenciar o armazenamento local.
 
-## Conceitos Fundamentais
-
-* **Snapshots em Camadas**: Crie "imagens" do estado do seu navegador (com cookies, `localStorage`, etc.) e derive
-  outras a partir delas. Diga adeus à necessidade de repetir o login a cada execução.
-* **Workers Isolados**: Execute cada tarefa em um "Worker" limpo e isolado, instanciado a partir de um snapshot,
-  garantindo que execuções paralelas não interfiram umas nas outras.
-* **API Fluente e Intuitiva**: Interaja com os elementos da página de forma declarativa e legível com o método
-  `worker.get()`, que torna a automação mais limpa e de fácil manutenção.
-* **Gestão Automática de Drivers**: O `browser-core` faz o download e gere o cache da versão exata do WebDriver
-  necessária para cada snapshot, eliminando problemas de compatibilidade.
-* **CLI Integrada**: Uma ferramenta de linha de comando para listar, inspecionar e gerir seus snapshots e o
-  armazenamento de objetos.
+Com esses componentes é possível escalar automações para centenas de execuções mantendo total rastreabilidade.
 
 ---
 
 ## Instalação
 
-A forma recomendada de instalar o `browser-core` é através do PyPI:
+A instalação mais simples é via [PyPI](https://pypi.org/project/browser-core/):
 
 ```bash
 pip install browser-core
 ```
 
+Isso disponibiliza a biblioteca para uso em scripts Python e também instala a ferramenta de linha de comando
+`browser-core`.
+
 ---
 
-## Um Fluxo de Trabalho Moderno
+## Conceitos Fundamentais
 
-O uso do `browser-core` é dividido em duas fases lógicas: a **preparação de ambientes** (criação de snapshots) e a *
-*execução de tarefas**.
+**Snapshots em Camadas**
+: Permitem criar "imagens" do navegador e derivar novos estados a partir delas. Assim você registra um login ou
+configuração apenas uma vez e reutiliza em milhares de execuções.
 
-### Fase 1: Criar os Snapshots Reutilizáveis
+**Workers Isolados**
+: Cada worker é iniciado a partir de um snapshot específico e executa a tarefa em um perfil totalmente separado dos
+demais.
 
-#### Passo 1.1: Criar um Snapshot Base (Raiz)
+**Drivers Gerenciados**
+: O projeto baixa e armazena a versão exata do WebDriver para o navegador escolhido, evitando incompatibilidades em
+diferentes máquinas.
 
-Primeiro, você precisa de um ponto de partida. Use a CLI para criar um "snapshot base", que representa um perfil de
-navegador limpo. Este comando é executado apenas uma vez.
+**Arquitetura Multi‑engine**
+: Tanto Selenium quanto Playwright podem ser utilizados com a mesma API de alto nível.
 
-```bash
-# Cria um snapshot base chamado 'chrome-base' usando a versão mais recente do Chrome.
-browser-core snapshots create-base chrome-base
-```
+**CLI Integrada**
+: Inclui comandos para criar snapshots base, listar estados existentes, inspecionar metadados e limpar todos os
+artefatos.
 
-Você pode inspecionar os snapshots existentes a qualquer momento com `browser-core snapshots list`.
+---
 
-#### Passo 1.2: Criar um Snapshot com Estado (ex: Login)
+## Fluxo de Trabalho
 
-Agora, a partir do `chrome-base`, crie um estado mais complexo, como uma sessão de usuário autenticada. Este processo é
-automatizado pelo `WorkforceManager`.
+O uso típico divide-se em duas fases: criação dos snapshots e execução das tarefas.
 
-```python
-# scripts/create_login_snapshot.py
-import os
-from browser_core import WorkforceManager, Worker, create_selector, ConfigurationError
-from browser_core.types import SelectorType
+### 1. Preparar os Snapshots
 
-# De preferência, carregue credenciais como variáveis de ambiente.
-# export APP_USER="meu_usuario@exemplo.com"
-# export APP_PASSWORD="minha-senha-super-segura"
-APP_USER = os.getenv("APP_USER")
-APP_PASSWORD = os.getenv("APP_PASSWORD")
+1. **Criar o Snapshot Base** – Perfil limpo com a versão de navegador desejada:
 
+   ```bash
+   browser-core snapshots create-base chrome-base
+   ```
 
-# 1. Defina a função que executa a lógica de setup
-def perform_login(worker: Worker):
-    """Esta função navega e realiza o login para criar o estado desejado."""
-    if not APP_USER or not APP_PASSWORD:
-        raise ConfigurationError("As variáveis de ambiente APP_USER e APP_PASSWORD devem ser definidas.")
+2. **Derivar um Snapshot com Estado** – Por exemplo, realizar login em um site e salvar esse estado:
 
-    worker.logger.info("Iniciando processo de login para criar o snapshot...")
-    worker.navigate_to("https://app.exemplo.com/login")
+   ```python
+   # scripts/create_login_snapshot.py
+   import os
+   from browser_core import Orchestrator, Worker, create_selector
+   from browser_core.types import SelectorType
+   
+   APP_USER = os.getenv("APP_USER")
+   APP_PASSWORD = os.getenv("APP_PASSWORD")
 
-    EMAIL_INPUT = create_selector("input[name='email']", SelectorType.CSS)
-    PASSWORD_INPUT = create_selector("input[name='password']", SelectorType.CSS)
-    LOGIN_BUTTON = create_selector("//button[text()='Entrar']", SelectorType.XPATH)
+   def perform_login(worker: Worker):
+       """Função que executa a lógica de login."""
 
-    worker.get(EMAIL_INPUT).send_keys(APP_USER)
-    worker.get(PASSWORD_INPUT).send_keys(APP_PASSWORD)
-    worker.get(LOGIN_BUTTON).click()
+       worker.navigate_to("https://app.exemplo.com/login")
+       worker.get(create_selector("input[name='email']", SelectorType.CSS)).send_keys(APP_USER)
+       worker.get(create_selector("input[name='password']", SelectorType.CSS)).send_keys(APP_PASSWORD)
+       worker.get(create_selector("button[type='submit']", SelectorType.CSS)).click()
+       worker.get(create_selector("#dashboard", SelectorType.CSS)) # Aguarda o carregamento
 
-    worker.get(create_selector("#dashboard-welcome-message", SelectorType.CSS))
-    worker.logger.info("Login realizado com sucesso! Estado pronto para ser capturado.")
+   def main():
+       """Função principal para orquestrar a criação do snapshot."""
+       Orchestrator().create_snapshot_from_task(
+           base_snapshot_id="chrome-base",
+           new_snapshot_id="app_logged_in",
+           setup_function=perform_login,
+           metadata={"description": "Sessão autenticada"}
+       )
+       print("Snapshot 'app_logged_in' criado com sucesso!")
 
+   if __name__ == "__main__":
+       main()
+   ```
 
-# 2. Execute o orquestrador para criar o snapshot
-def main():
-    workforce = WorkforceManager()
+### 2. Executar Tarefas em Paralelo
 
-    # [ATUALIZADO] IDs de snapshot mais claros
-    BASE_SNAPSHOT = "chrome-base"  # O snapshot que acabamos de criar com a CLI
-    LOGGED_IN_SNAPSHOT = "app_logged_in"  # O novo snapshot que vamos criar
-
-    try:
-        workforce.create_snapshot_from_task(
-            base_snapshot_id=BASE_SNAPSHOT,
-            new_snapshot_id=LOGGED_IN_SNAPSHOT,
-            setup_function=perform_login,
-            metadata={
-                "description": "Sessão autenticada no app.exemplo.com.",
-                "user": APP_USER
-            }
-        )
-        print(f"\nSnapshot '{LOGGED_IN_SNAPSHOT}' criado com sucesso!")
-    except Exception as e:
-        print(f"\n[!!!] Falha ao criar o snapshot: {e}")
-
-
-if __name__ == "__main__":
-    main()
-```
-
-### Fase 2: Executar Tarefas Usando o Snapshot
-
-Com o snapshot `app_logged_in` pronto, você pode executar inúmeras tarefas que dependem de um usuário autenticado, de
-forma massivamente paralela, e **sem nunca mais precisar fazer login**.
+Com o snapshot `app_logged_in` pronto, processe uma série de itens utilizando vários workers:
 
 ```python
-# scripts/run_report_tasks.py
-from browser_core import WorkforceManager, Worker, create_selector, default_settings
+# scripts/run_tasks.py
+from browser_core import Orchestrator, Worker, create_selector, default_settings
 from browser_core.types import SelectorType
 
 
-# --- Lógica da Tarefa ---
-# Esta função já parte do princípio que o worker está logado.
-def extract_report_data(worker: Worker, report_id: str):
-    worker.logger.info(f"Iniciando extração para o relatório: {report_id}")
+def fetch_report(worker: Worker, report_id: str):
+    """Função que cada worker executará para buscar um relatório."""
     worker.navigate_to(f"https://app.exemplo.com/reports/{report_id}")
+    table = worker.get(create_selector("#report-data-table", SelectorType.CSS)).text
+    return {"report_id": report_id, "length": len(table)}
 
-    REPORT_TABLE = create_selector("#report-data-table", SelectorType.CSS)
-
-    # A simples chamada a .text força o worker a aguardar o elemento aparecer
-    table_data = worker.get(REPORT_TABLE).text
-
-    # ... aqui você processaria os dados da tabela ...
-    processed_data = {"report_id": report_id, "content_length": len(table_data)}
-    worker.logger.info(f"Extração do relatório '{report_id}' concluída.")
-    return processed_data
-
-
-# --- Lógica de Setup do Worker (opcional) ---
-def worker_session_setup(worker: Worker) -> bool:
-    worker.logger.info(f"Worker {worker.logger.extra['task_id']} está pronto e online.")
-    return True
-
-
-# --- Execução em Lote ---
 def main():
+    """Função principal para executar as tarefas em paralelo."""
+    REPORTS = ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
     settings = default_settings()
-    settings["browser"]["headless"] = False  # Útil para depuração
+    settings["browser"]["headless"] = True
 
-    workforce = WorkforceManager(settings)
-
-    reports_to_process = ["Q1-2024", "Q2-2024", "Q3-2024", "Q4-2024"]
-
-    try:
-        results = workforce.run_tasks_in_squad(
-            squad_size=2,
-            base_snapshot_id="app_logged_in",  # Usa o estado de login
-            task_items=reports_to_process,
-            worker_setup_function=worker_session_setup,
-            item_processing_function=extract_report_data
-        )
-        print("\n--- Processamento Concluído ---")
-        for res in results:
-            print(res)
-
-    except Exception as e:
-        print(f"\n[!!!] Uma falha ocorreu durante a execução do esquadrão: {e}")
-
+    results = Orchestrator(settings).run_tasks_in_squad(
+        squad_size=2,
+        base_snapshot_id="app_logged_in",
+        task_items=REPORTS,
+        worker_setup_function=lambda w: True,  # Função de setup simples
+        item_processing_function=fetch_report,
+    )
+    print(results)
 
 if __name__ == "__main__":
     main()
 ```
 
-### Uso da CLI
+---
 
-Use o comando `browser-core` no seu terminal para gerir o ecossistema.
+## Exemplos de Uso
 
-* **Criar um snapshot base:**
+O exemplo acima demonstra a execução de tarefas em paralelo utilizando snapshots para reaproveitar o estado de login.
+
+---
+
+## Comandos da CLI
+
+A ferramenta `browser-core` auxilia na criação e manutenção dos snapshots e do armazenamento:
+
+- **Criar snapshot base**
     ```bash
     browser-core snapshots create-base <snapshot-id>
     ```
 
-* **Listar snapshots disponíveis:**
+- **Listar snapshots existentes**
     ```bash
     browser-core snapshots list
     ```
 
-* **Inspecionar os detalhes de um snapshot:**
+- **Inspecionar um snapshot**
     ```bash
-    browser-core snapshots inspect app_logged_in
+    browser-core snapshots inspect <snapshot-id>
     ```
 
-* **Limpar todo o armazenamento (cuidado, operação destrutiva!):**
+- **Limpar armazenamento**
     ```bash
     browser-core storage clean --force
     ```
 
+Todas as opções estão disponíveis com `browser-core --help`.
+
 ---
 
-## Desenvolvimento e Contribuição
+## Dicas Avançadas
 
-Se pretende contribuir para o `browser-core`, siga estes passos para configurar seu ambiente.
+- **Modo headless ou gráfico**: Defina `settings["browser"]["headless"]` para alternar entre execução invisível ou com
+  janela aberta.
+- **Uso de proxies e variáveis de ambiente**: É possível configurar proxies ou outras opções de driver diretamente nas
+  definições de `Settings`.
+- **Persistência de logs**: Cada execução cria uma pasta com registros detalhados em `tasks_logs_dir`, auxiliando
+  depuração e auditoria.
+- **Extensibilidade**: A estrutura de `Worker` e `Orchestrator` permite implementar tarefas complexas com facilidade,
+  reutilizando funções comuns de manipulação de página.
 
-1. **Clone o repositório:**
+---
+
+## Contribuindo
+
+Contribuições são bem-vindas! Para configurar o ambiente de desenvolvimento:
+
+1. Clone o repositório:
    ```bash
    git clone https://github.com/gabrielbarbosel/browser-core.git
    cd browser-core
    ```
 
-2. **Crie e ative um ambiente virtual:**
+2. Crie um ambiente virtual:
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # No Linux/macOS
-   # .venv\Scripts\activate    # No Windows
+   source .venv/bin/activate
    ```
 
-3. **Instale o projeto em modo "editável" com as dependências de desenvolvimento:**
+3. Instale as dependências de desenvolvimento:
    ```bash
    pip install -e ".[dev]"
-    
+   ```
+
+4. Execute as verificações locais:
+   ```bash
+   black -q src
+   pytest -q
+   ```
+
+---
+
+## Licença
+
+Distribuído sob a licença MIT. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.

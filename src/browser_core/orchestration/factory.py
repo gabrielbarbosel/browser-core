@@ -8,12 +8,15 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from .logging import setup_task_logger
-from .settings import Settings
-from .types import DriverInfo
 from .worker import Worker
+from ..engines import PlaywrightEngine
+from ..engines.selenium.provider import SeleniumProvider
+from ..logging import setup_task_logger
+from ..settings import Settings
+from ..types import DriverInfo
 
 
+# noinspection GrazieInspection
 class WorkerFactory:
     """
     Uma fábrica responsável por criar e configurar instâncias de Worker.
@@ -37,6 +40,7 @@ class WorkerFactory:
             profile_dir: Path,
             worker_id: str,
             consolidated_log_handler: Optional[logging.Handler] = None,
+            engine: str = "selenium",
     ) -> Worker:
         """
         Cria, configura e retorna uma nova instância de Worker.
@@ -46,6 +50,7 @@ class WorkerFactory:
             profile_dir: O diretório de perfil para o worker.
             worker_id: O identificador único para o novo worker.
             consolidated_log_handler: Handler opcional para um log consolidado.
+            engine: O motor de automação a utilizar ('selenium' ou 'playwright').
 
         Returns:
             Uma instância de Worker pronta para ser iniciada.
@@ -55,10 +60,10 @@ class WorkerFactory:
             logger_name=worker_id,
             log_dir=self.workforce_run_dir,
             config=self.settings.get("logging", {}),
-            consolidated_handler=consolidated_log_handler
+            consolidated_handler=consolidated_log_handler,
         )
 
-        # Cria a instância do Worker, injetando suas dependências
+        # Cria a instância do Worker
         worker = Worker(
             worker_id=worker_id,
             driver_info=driver_info,
@@ -67,4 +72,15 @@ class WorkerFactory:
             settings=self.settings,
             debug_artifacts_dir=(self.workforce_run_dir / worker_id / "debug"),
         )
+
+        # Seleciona e injeta o engine apropriado
+        if engine == "selenium":
+            provider = SeleniumProvider(self.settings.get("browser", {}))
+            engine_instance = provider.get_engine(driver_info.get("name", "chrome"), worker)
+        elif engine == "playwright":
+            engine_instance = PlaywrightEngine(worker, self.settings.get("browser", {}))
+        else:
+            raise ValueError(f"Engine desconhecido: {engine}")
+
+        worker.set_engine(engine_instance)
         return worker
