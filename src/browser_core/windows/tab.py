@@ -29,7 +29,7 @@ class Tab:
     def switch_to(self) -> "Tab":
         """Muda o foco do navegador para esta aba e a retorna."""
         self._logger.debug(f"Mudando foco para a aba '{self.name}'.")
-        # A lógica de troca de aba agora é centralizada no worker.
+        # A lógica de troca de aba é centralizada no worker.
         self._worker.window_manager.switch_to_tab(self.name)
         return self
 

@@ -4,7 +4,7 @@
 # objetos 'Tab' que permitem um controle orientado a objetos sobre cada aba
 # do navegador.
 
-from typing import Dict, Optional, List, TYPE_CHECKING, cast
+from typing import Dict, Optional, List, TYPE_CHECKING
 
 from selenium.common.exceptions import (
     TimeoutException,
@@ -31,7 +31,7 @@ class WindowManager:
     alternar o foco entre abas de forma controlada e orientada a objetos.
     """
 
-    def __init__(self, worker_instance: "Worker"):
+    def __init__(self, worker_instance: "Worker", driver: Optional[WebDriver] = None):
         """
         Inicializa o gestor de janelas.
 
@@ -41,7 +41,7 @@ class WindowManager:
                              execução de roteiros.
         """
         self._worker = worker_instance
-        self._driver = self._worker.driver
+        self._driver = driver or self._worker.driver
         self._logger = self._worker.logger
         self._tabs: Dict[str, Tab] = {}
         self._tab_counter = 0
@@ -94,7 +94,7 @@ class WindowManager:
             ("main" if i == 0 else f"tab_{i}"): Tab(
                 name=("main" if i == 0 else f"tab_{i}"),
                 handle=handle,
-                worker=self._worker,  # Passa a instância do Worker para a Tab
+                worker=self._worker,
             )
             for i, handle in enumerate(handles_no_navegador)
         }
@@ -120,7 +120,8 @@ class WindowManager:
         timeout_sec = timeout_ms / 1_000.0
 
         try:
-            wait = WebDriverWait(cast(WebDriver, self._driver), timeout=timeout_sec)
+            # A espera aqui não precisa de 'cast' se o tipo de _driver for bem inferido.
+            wait = WebDriverWait(self._driver, timeout=timeout_sec)
             wait.until(EC.number_of_windows_to_be(len(previous_handles) + 1))
         except TimeoutException:
             raise BrowserManagementError(
