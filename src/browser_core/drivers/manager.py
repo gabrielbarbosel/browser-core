@@ -1,15 +1,14 @@
-# Este módulo fornece a classe 'DriverManager', que lida com o download
-# automático, versionamento explícito (incluindo 'latest'), cache e
-# configuração de WebDrivers, desacoplando o resto do framework dos
-# detalhes de implementação de cada driver.
-
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, Type, cast
 
+from selenium.webdriver.remote.webdriver import WebDriver
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.service import Service as FirefoxService
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.core.driver_cache import DriverCacheManager
 from webdriver_manager.core.manager import DriverManager as WDMBaseManager
 
@@ -21,7 +20,6 @@ from ..types import (
     FilePath,
     LoggerProtocol,
     BrowserType,
-    WebDriverProtocol,
 )
 
 
@@ -54,11 +52,70 @@ class DriverManager:
                 "Nenhum 'driver_cache_dir' fornecido. A usar o diretório de cache padrão do sistema."
             )
 
-        self._driver_factories: Dict[str, Callable] = {
-            BrowserType.CHROME.value: self._create_chrome_driver,
-            # Futuramente, outros drivers podem ser adicionados aqui:
-            # BrowserType.FIREFOX.value: self._create_firefox_driver,
+        self._driver_map: Dict[str, Dict[str, Any]] = {
+            BrowserType.CHROME.value: {
+                "manager_cls": ChromeDriverManager,
+                "service_cls": ChromeService,
+                "options_cls": ChromeOptions,
+                "webdriver_cls": webdriver.Chrome,
+                "options_applier": self._apply_chrome_options,
+            },
+            BrowserType.FIREFOX.value: {
+                "manager_cls": GeckoDriverManager,
+                "service_cls": FirefoxService,
+                "options_cls": FirefoxOptions,
+                "webdriver_cls": webdriver.Firefox,
+                "options_applier": self._apply_firefox_options,
+            },
         }
+
+    @staticmethod
+    def _get_driver_manager_instance(
+            manager_cls: Type[WDMBaseManager],
+            browser_name: str,
+            version: Optional[str],
+            cache: Optional[DriverCacheManager],
+    ) -> WDMBaseManager:
+        """Cria uma instância do manager de driver apropriado com os argumentos corretos."""
+        if browser_name == BrowserType.CHROME.value:
+            driver_version_arg = version if version and version.lower() != "latest" else None
+            chrome_manager_cls = cast(Type[ChromeDriverManager], manager_cls)
+            return chrome_manager_cls(driver_version=driver_version_arg, cache_manager=cache)
+
+        # O GeckoDriverManager não aceita o argumento 'driver_version'.
+        return manager_cls(cache_manager=cache)
+
+    def prewarm_driver(self, driver_info: DriverInfo) -> None:
+        """Garante que o driver especificado esteja baixado no cache."""
+        browser_name = driver_info.get("name", "").lower()
+        requested_version = driver_info.get("version")
+
+        mapping = self._driver_map.get(browser_name)
+        if not mapping:
+            raise ConfigurationError(f"Tipo de navegador não suportado: {browser_name}")
+
+        cache = (
+            DriverCacheManager(root_dir=str(self.driver_cache_dir))
+            if self.driver_cache_dir
+            else None
+        )
+
+        manager_cls: Type[WDMBaseManager] = mapping["manager_cls"]
+        # A chamada usa o método estático.
+        manager = self._get_driver_manager_instance(
+            manager_cls, browser_name, requested_version, cache
+        )
+
+        try:
+            manager.install()
+        except Exception as e:
+            self.logger.error(
+                f"Falha ao pré-aquecer driver para {browser_name}: {e}", exc_info=True
+            )
+            raise DriverError(
+                f"Falha ao pré-aquecer driver para {browser_name}",
+                original_error=e,
+            )
 
     def _ensure_cache_dir(self) -> None:
         """Garante que o diretório de cache para os drivers exista."""
@@ -78,7 +135,7 @@ class DriverManager:
             driver_info: DriverInfo,
             browser_config: BrowserConfig,
             user_profile_dir: FilePath,
-    ) -> WebDriverProtocol:
+    ) -> WebDriver:
         """
         Cria e retorna uma instância de WebDriver com base no nome do navegador.
         """
@@ -88,12 +145,37 @@ class DriverManager:
             f"A criar driver para o navegador: {browser_name}, versão solicitada: {requested_version}"
         )
 
-        factory = self._driver_factories.get(browser_name)
-        if not factory:
+        mapping = self._driver_map.get(browser_name)
+        if not mapping:
             raise ConfigurationError(f"Tipo de navegador não suportado: {browser_name}")
 
+        options = mapping["options_cls"]()
+        applier: Callable = mapping["options_applier"]
+        applier(options, browser_config, user_profile_dir)
+
+        cache = (
+            DriverCacheManager(root_dir=str(self.driver_cache_dir))
+            if self.driver_cache_dir
+            else None
+        )
+
+        manager_cls: Type[WDMBaseManager] = mapping["manager_cls"]
+        # A chamada usa o método estático.
+        manager = self._get_driver_manager_instance(
+            manager_cls, browser_name, requested_version, cache
+        )
+
         try:
-            return factory(requested_version, browser_config, user_profile_dir)
+            driver_path = manager.install()
+            installed_driver_version = self._get_driver_version(manager)
+            self.logger.info(
+                f"A iniciar {browser_name.title()}Driver v{installed_driver_version} a partir de: {driver_path}"
+            )
+            service_cls: Type = mapping["service_cls"]
+            webdriver_cls: Type = mapping["webdriver_cls"]
+            service = service_cls(executable_path=driver_path)
+            driver = webdriver_cls(service=service, options=options)
+            return driver
         except Exception as e:
             self.logger.error(
                 f"Erro inesperado ao criar o driver para {browser_name}: {e}",
@@ -103,45 +185,6 @@ class DriverManager:
                 f"Erro inesperado ao criar o driver para {browser_name}",
                 original_error=e,
             )
-
-    def _create_chrome_driver(
-            self,
-            requested_version: str,
-            config: BrowserConfig,
-            profile_dir: FilePath,
-    ) -> webdriver.Chrome:
-        """Cria uma instância do ChromeDriver e retorna o objeto do driver."""
-        options = ChromeOptions()
-        self._apply_common_chrome_options(options, config, profile_dir)
-
-        cache = (
-            DriverCacheManager(root_dir=str(self.driver_cache_dir))
-            if self.driver_cache_dir
-            else None
-        )
-
-        driver_version_arg = (
-            requested_version
-            if requested_version and requested_version.lower() != "latest"
-            else None
-        )
-
-        # O construtor do ChromeDriverManager recebe o 'cache_manager'
-        manager = ChromeDriverManager(
-            driver_version=driver_version_arg, cache_manager=cache
-        )
-
-        driver_path = manager.install()
-
-        installed_driver_version = self._get_driver_version(manager)
-        self.logger.info(
-            f"A iniciar ChromeDriver v{installed_driver_version} a partir de: {driver_path}"
-        )
-
-        service = ChromeService(executable_path=driver_path)
-        driver = webdriver.Chrome(service=service, options=options)
-
-        return driver
 
     def _get_driver_version(self, manager: WDMBaseManager) -> str:
         """Obtém a versão do driver a partir da instância do manager."""
@@ -160,7 +203,7 @@ class DriverManager:
         self.logger.warning("Não foi possível obter a versão do driver dinamicamente.")
         return "desconhecida"
 
-    def _apply_common_chrome_options(
+    def _apply_chrome_options(
             self, options: ChromeOptions, config: BrowserConfig, profile_dir: FilePath
     ) -> None:
         """Centraliza a aplicação de todas as opções de configuração do Chrome."""
@@ -181,15 +224,12 @@ class DriverManager:
         if config.get("headless", True):
             options.add_argument("--headless=new")
 
-        # Lógica para lidar com o modo anônimo ('incognito').
-        # Se ativado, o perfil de usuário do snapshot é ignorado, pois são mutuamente exclusivos.
         if config.get("incognito"):
             self.logger.warning(
                 "O modo 'incognito' está ativo. O perfil de usuário do snapshot será ignorado nesta execução."
             )
             options.add_argument("--incognito")
         else:
-            # O perfil de usuário (essencial para snapshots) só é adicionado se não estiver em modo anônimo.
             options.add_argument(f"--user-data-dir={profile_dir}")
 
         if config.get("disable_gpu", True):
@@ -205,3 +245,18 @@ class DriverManager:
 
         for arg in config.get("additional_args", []):
             options.add_argument(arg)
+
+    @staticmethod
+    def _setup_common_options(options: Any) -> None:
+        if hasattr(options, "add_argument"):
+            options.add_argument("--disable-gpu")
+            options.add_argument("--no-sandbox")
+
+    def _apply_firefox_options(
+            self, options: FirefoxOptions, config: BrowserConfig, profile_dir: FilePath
+    ) -> None:
+        self._setup_common_options(options)
+        if config.get("headless", True):
+            options.add_argument("-headless")
+        if not config.get("incognito"):
+            options.set_preference("profile", str(profile_dir))

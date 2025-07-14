@@ -6,6 +6,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..selectors.manager import SelectorDefinition
     from ..orchestration.worker import Worker
+    from ..windows.manager import WindowManager
 
 
 class AutomationEngine(Protocol):
@@ -22,3 +23,6 @@ class AutomationEngine(Protocol):
     def find_element(self, selector: "SelectorDefinition") -> Any: ...
 
     def execute_script(self, script: str, *args: Any) -> Any: ...
+
+    @property
+    def window_manager(self) -> "WindowManager": ...

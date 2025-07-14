@@ -7,7 +7,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from .factory import WorkerFactory
 from .worker import Worker
@@ -16,7 +16,9 @@ from ..logging import StructuredFormatter
 from ..settings import Settings, default_settings
 from ..snapshots.manager import SnapshotManager
 from ..storage.engine import StorageEngine
-from ..types import TaskStatus
+from ..types import TaskStatus, DriverInfo, LoggerProtocol
+from ..drivers.manager import DriverManager
+from ..drivers.manager import DriverError
 
 
 class Orchestrator:
@@ -37,16 +39,25 @@ class Orchestrator:
         storage = StorageEngine(objects_dir)
         self.snapshot_manager = SnapshotManager(snapshots_dir, storage)
 
-        self.main_logger = logging.getLogger("browser_core.workforce")
+        self.main_logger: logging.Logger = logging.getLogger("browser_core.workforce")
         if not self.main_logger.hasHandlers():
             handler = logging.StreamHandler()
             handler.setFormatter(
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )
             self.main_logger.addHandler(handler)
-        self.main_logger.setLevel(
-            self.settings.get("logging", {}).get("level", "INFO").upper()
-        )
+            self.main_logger.setLevel(
+                self.settings.get("logging", {}).get("level", "INFO").upper()
+            )
+
+    def _ensure_driver_is_ready(self, driver_info: DriverInfo) -> None:
+        """Baixa o driver necessário de forma idempotente."""
+        manager = DriverManager(logger=cast(LoggerProtocol, self.main_logger), settings=self.settings)
+        try:
+            manager.prewarm_driver(driver_info)
+        except DriverError as e:
+            self.main_logger.error(str(e))
+            raise
 
     def create_snapshot_from_task(
             self,
@@ -85,18 +96,18 @@ class Orchestrator:
                 base_snapshot_id, temp_profile_dir
             )
 
-            worker = factory.create_worker(
+            worker_instance = factory.create_worker(
                 driver_info=driver_info,
                 profile_dir=temp_profile_dir,
                 worker_id="snapshot_creator",
             )
 
             try:
-                with worker:
+                with worker_instance:
                     self.main_logger.info(
                         "Executando a função de setup para modificar o estado do navegador..."
                     )
-                    setup_function(worker)
+                    setup_function(worker_instance)
                     self.main_logger.info("Função de setup concluída com sucesso.")
             except Exception as e:
                 self.main_logger.error(
@@ -152,6 +163,7 @@ class Orchestrator:
         consolidated_handler.setFormatter(formatter)
 
         driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)["base_driver"]
+        self._ensure_driver_is_ready(driver_info)
         task_queue: "queue.Queue[Any]" = queue.Queue()
         for item in task_items:
             task_queue.put(item)
@@ -164,13 +176,13 @@ class Orchestrator:
         def prepare_worker(i: int) -> Tuple[Path, Worker]:
             worker_dir = Path(tempfile.mkdtemp(prefix=f"squad_worker_profile_{i}_"))
             self.snapshot_manager.materialize_for_worker(base_snapshot_id, worker_dir)
-            worker = factory.create_worker(
+            wk = factory.create_worker(
                 driver_info=driver_info,
                 profile_dir=worker_dir,
                 worker_id=f"worker_{i}",
                 consolidated_log_handler=consolidated_handler,
             )
-            return worker_dir, worker
+            return worker_dir, wk
 
         with ThreadPoolExecutor(max_workers=squad_size) as executor:
             futures = [executor.submit(prepare_worker, i) for i in range(squad_size)]

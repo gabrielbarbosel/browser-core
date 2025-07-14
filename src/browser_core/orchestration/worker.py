@@ -10,7 +10,6 @@ from selenium.common.exceptions import WebDriverException
 from ..engines import (
     AutomationEngine,
     SeleniumChromeEngine,
-    SeleniumFirefoxEngine,
 )
 from ..exceptions import WorkerError, PageLoadError
 from ..logging import TaskLoggerAdapter
@@ -56,7 +55,6 @@ class Worker:
         self.selector_manager = SelectorManager(
             logger=self.logger, settings=self.settings
         )
-        self.window_manager: Optional[WindowManager] = None
 
         self._engine: AutomationEngine = engine or SeleniumChromeEngine(
             self, self.settings.get("browser", {})
@@ -74,6 +72,11 @@ class Worker:
         """Propriedade pública para aceder de forma segura à instância do driver."""
         self._ensure_started()
         return self._driver
+
+    @property
+    def window_manager(self) -> WindowManager:
+        self._ensure_started()
+        return self._engine.window_manager
 
     @property
     def is_running(self) -> bool:
@@ -96,8 +99,6 @@ class Worker:
             if not self._engine:
                 raise WorkerError("Engine não configurado")
             self._driver = self._engine.start(self.profile_dir)
-            if isinstance(self._engine, (SeleniumChromeEngine, SeleniumFirefoxEngine)):
-                self.window_manager = self._engine.window_manager
             self._is_started = True
             duration = (time.time() - start_time) * 1_000
             self.logger.info(f"Worker iniciado com sucesso em {duration:.2f}ms.")
@@ -117,7 +118,6 @@ class Worker:
         finally:
             self._driver = None
             self._is_started = False
-            self.window_manager = None
             self.logger.info("Worker finalizado e recursos do navegador libertados.")
 
     # --- Métodos de Interação com a Página ---

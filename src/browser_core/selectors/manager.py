@@ -201,7 +201,7 @@ class SelectorManager:
     ) -> WebElementProtocol:
         # Método auxiliar privado que usa a espera explícita do Selenium.
         by = self._get_selenium_by(selector_type)
-        # O contexto da espera agora é o driver ou um elemento pai
+        # O contexto da espera é o driver ou um elemento pai
         wait = WebDriverWait(
             cast(Union[WebDriver, WebElement], context), timeout_ms / 1_000.0
         )

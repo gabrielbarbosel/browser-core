@@ -198,6 +198,8 @@ Todas as opções estão disponíveis com `browser-core --help`.
   definições de `Settings`.
 - **Persistência de logs**: Cada execução cria uma pasta com registros detalhados em `tasks_logs_dir`, auxiliando
   depuração e auditoria.
+- **Pré-aquecimento do WebDriver**: O Orchestrator garante que o driver necessário seja baixado uma única vez antes
+  de iniciar os workers, evitando conflitos em execuções paralelas.
 - **Extensibilidade**: A estrutura de `Worker` e `Orchestrator` permite implementar tarefas complexas com facilidade,
   reutilizando funções comuns de manipulação de página.
 
