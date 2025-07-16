@@ -1,5 +1,6 @@
 import json
 import shutil
+import importlib.util
 from importlib import metadata
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from .snapshots.manager import SnapshotManager
 from .storage.engine import StorageEngine
 from .types import BrowserType, DriverInfo
 from .utils import safe_json_dumps
+from .orchestration import Orchestrator
+from .orchestration.factory import WorkerFactory
 
 
 class CliContext:
@@ -36,14 +39,38 @@ class CliContext:
             exit(1)
 
 
+def _load_module_from_path(path: Path):
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if not spec or not spec.loader:
+        raise RuntimeError(f"Não foi possível carregar o módulo: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_callable(module_path: Path, func_name: str):
+    module = _load_module_from_path(module_path)
+    try:
+        return getattr(module, func_name)
+    except AttributeError as e:
+        raise RuntimeError(
+            f"Função '{func_name}' não encontrada em {module_path}"
+        ) from e
+
+
 @click.group()
-@click.version_option(
-    version=metadata.version("browser-core"), prog_name="browser-core"
-)
 @click.pass_context
 def cli(ctx: click.Context):
     """Interface de Linha de Comando para gerir o browser-core."""
     ctx.obj = CliContext()
+
+
+try:
+    _version = metadata.version("browser-core")
+except metadata.PackageNotFoundError:
+    _version = "0.0.0"
+
+cli = click.version_option(version=_version, prog_name="browser-core")(cli)
 
 
 # --- Grupo de Comandos para Snapshots ---
@@ -137,6 +164,106 @@ def inspect_snapshot(ctx: click.Context, snapshot_id: str):
         return
 
     click.echo(safe_json_dumps(data, indent=2))
+
+
+@snapshots.command(name="create-from-task")
+@click.option("--base", required=True, help="Snapshot base de origem")
+@click.option("--new", required=True, help="Identificador do novo snapshot")
+@click.option("--setup-script", required=True, type=click.Path(exists=True))
+@click.option("--setup-function", required=True)
+@click.pass_context
+def create_from_task(
+    ctx: click.Context, base: str, new: str, setup_script: str, setup_function: str
+):
+    """Cria snapshot executando uma função de setup."""
+    func = _load_callable(Path(setup_script), setup_function)
+    orchestrator = Orchestrator(ctx.obj.settings)
+    try:
+        orchestrator.create_snapshot_from_task(base, new, func)
+        click.secho(
+            f"Snapshot '{new}' criado com sucesso a partir de '{base}'.",
+            fg="green",
+        )
+    except Exception as e:
+        click.secho(f"Falha ao criar snapshot: {e}", fg="red", err=True)
+
+
+@snapshots.command(name="debug")
+@click.argument("snapshot_id")
+@click.pass_context
+def debug_snapshot(ctx: click.Context, snapshot_id: str):
+    """Abre um console interativo a partir de um snapshot."""
+    import tempfile
+    import code
+
+    orchestrator = Orchestrator(ctx.obj.settings)
+    sm = orchestrator.snapshot_manager
+    data = sm.get_snapshot_data(snapshot_id)
+    if not data:
+        click.echo(f"Snapshot '{snapshot_id}' não encontrado.", err=True)
+        return
+    driver_info = data["base_driver"]
+    run_dir = orchestrator.get_new_workforce_run_dir()
+    factory = WorkerFactory(orchestrator.settings, run_dir)
+
+    with tempfile.TemporaryDirectory(prefix="debug_worker_") as profile_dir:
+        sm.materialize_for_worker(snapshot_id, Path(profile_dir))
+        worker = factory.create_worker(driver_info, Path(profile_dir), "debug_worker")
+        orchestrator.settings["browser"]["headless"] = False
+        with worker:
+            code.interact(
+                banner="Console interativo iniciado. Variável 'worker' pronta.",
+                local={"worker": worker},
+            )
+
+
+@cli.command(name="run")
+@click.option("--snapshot", required=True)
+@click.option("--tasks-file", required=True, type=click.Path(exists=True))
+@click.option("--worker-script", required=True, type=click.Path(exists=True))
+@click.option("--worker-function", required=True)
+@click.option("--squad-size", default=4, show_default=True)
+@click.option("--headless/--no-headless", default=True, show_default=True)
+@click.pass_context
+def run_tasks(
+    ctx: click.Context,
+    snapshot: str,
+    tasks_file: str,
+    worker_script: str,
+    worker_function: str,
+    squad_size: int,
+    headless: bool,
+):
+    """Executa tarefas em paralelo usando um arquivo de dados."""
+    orchestrator = Orchestrator(ctx.obj.settings)
+    orchestrator.settings["browser"]["headless"] = headless
+
+    func = _load_callable(Path(worker_script), worker_function)
+
+    path = Path(tasks_file)
+    if path.suffix.lower() == ".json":
+        items = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        import csv
+
+        with open(path, newline="", encoding="utf-8") as csvfile:
+            reader = csv.reader(csvfile)
+            header = next(reader, None)
+            if header and len(header) == 1:
+                items = [row[0] for row in reader]
+            elif header:
+                items = [dict(zip(header, row)) for row in reader]
+            else:
+                items = [row for row in reader]
+
+    results = orchestrator.run_tasks_in_squad(
+        base_snapshot_id=snapshot,
+        task_items=items,
+        worker_setup_function=lambda w: True,
+        item_processing_function=func,
+        squad_size=squad_size,
+    )
+    click.echo(safe_json_dumps(results, indent=2))
 
 
 # --- Grupo de Comandos para o Armazenamento ---

@@ -180,6 +180,20 @@ A ferramenta `browser-core` auxilia na criação e manutenção dos snapshots e 
     ```bash
     browser-core snapshots inspect <snapshot-id>
     ```
+- **Criar snapshot a partir de uma tarefa**
+    ```bash
+    browser-core snapshots create-from-task --base <id-base> --new <id-novo> \
+        --setup-script path/setup.py --setup-function func
+    ```
+- **Depurar um snapshot**
+    ```bash
+    browser-core snapshots debug <snapshot-id>
+    ```
+- **Executar tarefas em esquadrão**
+    ```bash
+    browser-core run --snapshot <id> --tasks-file dados.csv \
+        --worker-script worker.py --worker-function processa
+    ```
 
 - **Limpar armazenamento**
     ```bash
@@ -198,6 +212,9 @@ Todas as opções estão disponíveis com `browser-core --help`.
   definições de `Settings`.
 - **Persistência de logs**: Cada execução cria uma pasta com registros detalhados em `tasks_logs_dir`, auxiliando
   depuração e auditoria.
+- **API de Elementos mais rica**: `ElementProxy` agora possui métodos como `hover()`, `scroll_to_view()` e
+  utilidades de espera (`wait_for_visible`, `wait_for_clickable`). Também é possível obter múltiplos elementos com
+  `worker.get_all()` e coletar seus textos com `get_texts()`.
 - **Pré-aquecimento do WebDriver**: O Orchestrator garante que o driver necessário seja baixado uma única vez antes
   de iniciar os workers, evitando conflitos em execuções paralelas.
 - **Extensibilidade**: A estrutura de `Worker` e `Orchestrator` permite implementar tarefas complexas com facilidade,

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 from ..engines import (
     AutomationEngine,
@@ -14,6 +16,7 @@ from ..engines import (
 from ..exceptions import WorkerError, PageLoadError
 from ..logging import TaskLoggerAdapter
 from ..selectors.element_proxy import ElementProxy
+from ..selectors.multi_proxy import ElementListProxy
 from ..selectors.manager import SelectorDefinition, SelectorManager
 from ..settings import Settings
 from ..types import DriverInfo, WebElementProtocol
@@ -28,14 +31,14 @@ class Worker:
     """
 
     def __init__(
-            self,
-            worker_id: str,
-            driver_info: DriverInfo,
-            profile_dir: Path,
-            logger: "TaskLoggerAdapter",
-            settings: Settings,
-            engine: Optional[AutomationEngine] = None,
-            debug_artifacts_dir: Optional[Path] = None,
+        self,
+        worker_id: str,
+        driver_info: DriverInfo,
+        profile_dir: Path,
+        logger: "TaskLoggerAdapter",
+        settings: Settings,
+        engine: Optional[AutomationEngine] = None,
+        debug_artifacts_dir: Optional[Path] = None,
     ):
         """
         Inicializa a instância do Worker.
@@ -46,7 +49,7 @@ class Worker:
         self.profile_dir = profile_dir
         self.logger = logger
         self.debug_artifacts_dir = debug_artifacts_dir or (
-                self.profile_dir / "debug_artifacts"
+            self.profile_dir / "debug_artifacts"
         )
 
         self._driver: Optional[Any] = None
@@ -138,6 +141,16 @@ class Worker:
                 original_error=e,
             )
 
+    def wait_for_url_contains(self, substring: str, timeout_ms: int) -> None:
+        """Espera até que a URL atual contenha o texto informado."""
+        self._ensure_started()
+        WebDriverWait(self.driver, timeout_ms / 1000).until(EC.url_contains(substring))
+
+    def wait_for_page_title(self, title: str, timeout_ms: int) -> None:
+        """Espera até que o título da página corresponda ao texto."""
+        self._ensure_started()
+        WebDriverWait(self.driver, timeout_ms / 1000).until(EC.title_is(title))
+
     def get(self, definition: SelectorDefinition) -> "ElementProxy":
         """
         Retorna um objeto proxy para um elemento, permitindo a execução de ações fluentes.
@@ -152,6 +165,16 @@ class Worker:
         """
         self._ensure_started()
         return ElementProxy(self, definition)
+
+    def get_all(self, definition: SelectorDefinition) -> "ElementListProxy":
+        """Retorna uma lista de ElementProxy para todos os elementos encontrados."""
+        self._ensure_started()
+        elements = self.selector_manager.find_elements(self.driver, definition)
+        proxies = [ElementProxy(self, definition) for _ in elements]
+        for proxy, element in zip(proxies, elements):
+            proxy._element = element
+            proxy._used_selector = definition.primary
+        return ElementListProxy(proxies)
 
     def find_element(self, definition: SelectorDefinition) -> WebElementProtocol:
         """

@@ -99,3 +99,15 @@ class PageLoadError(BrowserCoreError):
     """Lançada quando uma página ou URL falha ao carregar corretamente."""
 
     pass
+
+
+class ElementTimeoutError(BrowserCoreError):
+    """Lançada quando uma espera por um elemento excede o tempo limite."""
+
+    pass
+
+
+class NavigationError(BrowserCoreError):
+    """Lançada para falhas de navegação ou redirecionamento inesperado."""
+
+    pass
