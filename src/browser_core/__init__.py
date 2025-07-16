@@ -11,6 +11,7 @@ from .engines import (
     SeleniumChromeEngine,
     SeleniumFirefoxEngine,
 )
+
 # --- Exceções Principais ---
 from .exceptions import (
     BrowserCoreError,
@@ -18,17 +19,21 @@ from .exceptions import (
     DriverError,
     ElementActionError,
     ElementNotFoundError,
+    ElementTimeoutError,
     PageLoadError,
+    NavigationError,
     SnapshotError,
     StorageEngineError,
     WorkerError,
 )
 from .orchestration import Orchestrator, Worker
+
 # --- Funções de Conveniência ---
-from .selectors import create_selector, SelectorDefinition
+from .selectors import create_selector, SelectorDefinition, ElementListProxy
 from .settings import Settings, default_settings
 from .snapshots.manager import SnapshotManager
 from .storage.engine import StorageEngine
+
 # --- Tipos e Enums Essenciais ---
 from .types import BrowserType, SelectorType, SnapshotId, DriverInfo, SnapshotData
 
@@ -52,6 +57,7 @@ __all__ = [
     # --- Seletores ---
     "create_selector",
     "SelectorDefinition",
+    "ElementListProxy",
     # --- Enums e Tipos de Dados Chave ---
     "BrowserType",
     "SelectorType",
@@ -64,7 +70,9 @@ __all__ = [
     "DriverError",
     "ElementActionError",
     "ElementNotFoundError",
+    "ElementTimeoutError",
     "PageLoadError",
+    "NavigationError",
     "SnapshotError",
     "StorageEngineError",
     "WorkerError",

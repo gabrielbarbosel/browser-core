@@ -80,7 +80,7 @@ class Orchestrator:
             )
 
         driver_info = base_snapshot_data["base_driver"]
-        workforce_run_dir = self._get_new_workforce_run_dir()
+        workforce_run_dir = self.get_new_workforce_run_dir()
 
         factory = WorkerFactory(self.settings, workforce_run_dir)
 
@@ -146,7 +146,7 @@ class Orchestrator:
             )
             return []
 
-        workforce_run_dir = self._get_new_workforce_run_dir()
+        workforce_run_dir = self.get_new_workforce_run_dir()
         self.main_logger.info(
             f"Iniciando esquadrão. Logs e artefatos em: {workforce_run_dir}"
         )
@@ -269,7 +269,7 @@ class Orchestrator:
                 shutil.rmtree(d, ignore_errors=True)
             consolidated_handler.close()
 
-    def _get_new_workforce_run_dir(self) -> Path:
+    def get_new_workforce_run_dir(self) -> Path:
         """Cria um diretório de execução único para logs e artefatos."""
         run_id = f"workforce_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         run_dir = self.tasks_logs_dir / run_id
