@@ -43,7 +43,7 @@ class ElementProxy:
             selector: A definição do seletor para encontrar o elemento.
             parent: O ElementProxy pai, se for uma busca aninhada.
         """
-        self._worker = worker
+        self.worker = worker
         self._selector = selector
         self._parent = parent
         self._element: Optional[WebElementProtocol] = None
@@ -56,19 +56,19 @@ class ElementProxy:
         """
         if self._element is None:
             search_context = (
-                self._parent._find() if self._parent else self._worker.driver
+                self._parent._find() if self._parent else self.worker.driver
             )
 
             #  A busca é feita pelo SelectorManager, que retorna o elemento e o seletor usado
-            self._worker.logger.debug(
+            self.worker.logger.debug(
                 f"ElementProxy: A procurar elemento com seletor '{self._selector.primary}'..."
             )
             self._element, self._used_selector = (
-                self._worker.selector_manager.find_element(
+                self.worker.selector_manager.find_element(
                     search_context, self._selector
                 )
             )
-            self._worker.logger.debug(
+            self.worker.logger.debug(
                 f"ElementProxy: Elemento encontrado com '{self._used_selector}' e cacheado."
             )
 
@@ -77,7 +77,7 @@ class ElementProxy:
     @property
     def text(self) -> _ValueProxy:
         """Retorna o conteúdo de texto visível do elemento."""
-        return _ValueProxy(lambda: self._find().text, self._worker)
+        return _ValueProxy(lambda: self._find().text, self.worker)
 
     @property
     def tag_name(self) -> str:
@@ -92,7 +92,7 @@ class ElementProxy:
         """Executa a ação de clique no elemento."""
         element = self._find()  # Garante que _used_selector seja preenchido
         self._wait_actionable()
-        self._worker.logger.info(
+        self.worker.logger.info(
             f"A clicar no elemento definido por: '{self._used_selector}'"
         )
         element.click()
@@ -117,7 +117,7 @@ class ElementProxy:
     def hover(self) -> "ElementProxy":
         """Move o cursor para cima do elemento."""
         element = self._find()
-        ActionChains(self._worker.driver).move_to_element(
+        ActionChains(self.worker.driver).move_to_element(
             cast(WebElement, element)
         ).perform()
         return self
@@ -125,7 +125,7 @@ class ElementProxy:
     def scroll_to_view(self) -> "ElementProxy":
         """Rola a página para que o elemento fique visível."""
         element = self._find()
-        self._worker.execute_script("arguments[0].scrollIntoView(true);", element)
+        self.worker.execute_script("arguments[0].scrollIntoView(true);", element)
         return self
 
     def get_parent(self) -> "ElementProxy":
@@ -133,7 +133,7 @@ class ElementProxy:
         parent_selector = SelectorDefinition(
             "..", selector_type=self._selector.selector_type
         )
-        return ElementProxy(worker=self._worker, selector=parent_selector, parent=self)
+        return ElementProxy(worker=self.worker, selector=parent_selector, parent=self)
 
     def send_keys(self, *values: str) -> "ElementProxy":
         """
@@ -144,7 +144,7 @@ class ElementProxy:
 
         element = self._find()
         self._wait_actionable()
-        self._worker.logger.info(
+        self.worker.logger.info(
             f"A enviar texto '{masked_text}' para o elemento: '{self._used_selector}'"
         )
 
@@ -155,18 +155,18 @@ class ElementProxy:
         """Limpa o conteúdo de um campo de texto (input, textarea)."""
         element = self._find()
         self._wait_actionable()
-        self._worker.logger.info(
+        self.worker.logger.info(
             f"A limpar o conteúdo do elemento: '{self._used_selector}'"
         )
         element.clear()
         return self
 
     def _wait_actionable(self) -> None:
-        timeout = self._worker.settings.get("timeouts", {}).get(
+        timeout = self.worker.settings.get("timeouts", {}).get(
             "element_action_ms", 5000
         )
         try:
-            WebDriverWait(self._worker.driver, timeout / 1000.0).until(
+            WebDriverWait(self.worker.driver, timeout / 1000.0).until(
                 lambda d: self._element.is_displayed() and self._element.is_enabled()
             )
         except Exception as exc:
@@ -182,18 +182,18 @@ class ElementProxy:
         """
         Busca um elemento aninhado dentro deste elemento, retornando um novo ElementProxy.
         """
-        self._worker.logger.debug(
+        self.worker.logger.debug(
             f"A criar proxy para elemento aninhado com seletor '{nested_selector.primary}'"
         )
         # O novo proxy recebe `self` como seu contexto de busca (pai).
-        return ElementProxy(worker=self._worker, selector=nested_selector, parent=self)
+        return ElementProxy(worker=self.worker, selector=nested_selector, parent=self)
 
     # --- Métodos de espera ---
 
     def wait_for_clickable(self, timeout_ms: int) -> "ElementProxy":
         """Aguarda até que o elemento esteja clicável."""
         element = self._find()
-        WebDriverWait(self._worker.driver, timeout_ms / 1_000).until(
+        WebDriverWait(self.worker.driver, timeout_ms / 1_000).until(
             EC.element_to_be_clickable(cast(WebElement, element))
         )
         return self
@@ -201,7 +201,7 @@ class ElementProxy:
     def wait_for_visible(self, timeout_ms: int) -> "ElementProxy":
         """Aguarda até que o elemento esteja visível."""
         element = self._find()
-        WebDriverWait(self._worker.driver, timeout_ms / 1_000).until(
+        WebDriverWait(self.worker.driver, timeout_ms / 1_000).until(
             EC.visibility_of(cast(WebElement, element))
         )
         return self
@@ -209,7 +209,7 @@ class ElementProxy:
     def wait_for_disappear(self, timeout_ms: int) -> "ElementProxy":
         """Aguarda o elemento desaparecer da página."""
         element = self._find()
-        WebDriverWait(self._worker.driver, timeout_ms / 1_000).until_not(
+        WebDriverWait(self.worker.driver, timeout_ms / 1_000).until_not(
             lambda d: element.is_displayed()
         )
         return self
@@ -223,7 +223,7 @@ class ElementProxy:
 class _ValueProxy:
     def __init__(self, getter, worker: "Worker"):
         self._getter = getter
-        self._worker = worker
+        self.worker = worker
 
     def __str__(self) -> str:
         return self._getter()
@@ -235,7 +235,7 @@ class _ValueProxy:
         timeout = (
             timeout_ms
             if timeout_ms is not None
-            else self._worker.settings.get("timeouts", {}).get("assertion_ms", 5000)
+            else self.worker.settings.get("timeouts", {}).get("assertion_ms", 5000)
         )
         end = time.time() + timeout / 1000.0
         last = self.get()
