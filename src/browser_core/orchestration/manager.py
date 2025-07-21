@@ -4,6 +4,7 @@ import logging
 import queue
 import shutil
 import tempfile
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -129,6 +130,125 @@ class Orchestrator:
             )
             self.main_logger.info(f"Snapshot '{new_snapshot_id}' criado com sucesso!")
 
+    def run_supervised_squad(
+            self,
+            base_snapshot_id: str,
+            task_items: List[Any],
+            worker_setup_function: Callable[[Worker], bool],
+            item_processing_function: Callable[[Worker, Any], Any],
+            squad_size: int,
+            on_result_callback: Optional[Callable[[Any], None]] = None,
+    ) -> List[Any]:
+        """
+        Executa tarefas com um esquadrão de workers de longa duração e resilientes.
+        Retorna uma lista com os resultados de todas as tarefas processadas.
+        """
+        if not task_items:
+            self.main_logger.warning("Nenhuma tarefa fornecida. Encerrando.")
+            return []
+
+        workforce_run_dir = self.get_new_workforce_run_dir()
+        self.main_logger.info(
+            f"Iniciando esquadrão SUPERVISIONADO de {squad_size} workers. Logs em: {workforce_run_dir}")
+
+        task_queue = queue.Queue()
+        for item in task_items:
+            task_queue.put(item)
+
+        results_list = []
+        results_lock = threading.Lock()
+
+        log_config = self.settings.get("logging", {})
+        formatter = StructuredFormatter(
+            format_type=log_config.get("format_type", "detailed"),
+            mask_credentials=log_config.get("mask_credentials", True),
+        )
+        consolidated_handler = logging.FileHandler(workforce_run_dir / "consolidated.log", encoding="utf-8")
+        consolidated_handler.setFormatter(formatter)
+
+        driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)["base_driver"]
+        self._ensure_driver_is_ready(driver_info)
+        factory = WorkerFactory(self.settings, workforce_run_dir)
+
+        def _worker_lifecycle(worker_id: int):
+            worker_name = f"Worker-{worker_id}"
+            self.main_logger.info(f"[{worker_name}] Iniciando ciclo de vida.")
+
+            with tempfile.TemporaryDirectory(prefix=f"supervised_worker_{worker_id}_") as temp_profile_dir_str:
+                worker_dir = Path(temp_profile_dir_str)
+                self.snapshot_manager.materialize_for_worker(base_snapshot_id, worker_dir)
+                worker = factory.create_worker(
+                    driver_info=driver_info, profile_dir=worker_dir,
+                    worker_id=f"squad_{worker_id}", consolidated_log_handler=consolidated_handler,
+                )
+                try:
+                    with worker:
+                        if not worker_setup_function(worker):
+                            self.main_logger.error(f"[{worker_name}] Falha no setup inicial. Encerrando.")
+                            return
+
+                        while True:
+                            try:
+                                item = task_queue.get_nowait()
+                            except queue.Empty:
+                                self.main_logger.info(f"[{worker_name}] Fila de tarefas vazia. Encerrando.")
+                                break
+                            try:
+                                self.main_logger.info(f"[{worker_name}] Processando item: {str(item)}")
+                                result = item_processing_function(worker, item)
+                                with results_lock:
+                                    results_list.append(result)
+                                if on_result_callback:
+                                    on_result_callback(result)
+                            except WorkerError as e:
+                                self.main_logger.error(f"[{worker_name}] Erro crítico: {e}. Tarefa re-enfileirada.")
+                                task_queue.put(item)
+                                break
+                            except Exception as e:
+                                self.main_logger.error(f"[{worker_name}] Erro não-crítico em '{str(item)}'.",
+                                                       exc_info=True)
+                                error_result = self._create_error_result(item, TaskStatus.TASK_FAILED, str(e))
+                                with results_lock:
+                                    results_list.append(error_result)
+                                if on_result_callback:
+                                    on_result_callback(error_result)
+                            finally:
+                                task_queue.task_done()
+                except Exception:
+                    self.main_logger.critical(f"[{worker_name}] Falha irrecuperável no ciclo de vida.", exc_info=True)
+
+        with ThreadPoolExecutor(max_workers=squad_size, thread_name_prefix="Supervisor") as executor:
+            futures = {executor.submit(_worker_lifecycle, i): i for i in range(squad_size)}
+            while futures:
+                done_future = next(as_completed(futures))
+                worker_id = futures.pop(done_future)
+                try:
+                    done_future.result()
+                except Exception as e:
+                    self.main_logger.critical(f"[Supervisor] Thread do Worker {worker_id} falhou: {e}", exc_info=True)
+                if not task_queue.empty():
+                    self.main_logger.info(f"[Supervisor] Substituindo worker {worker_id}.")
+                    new_future = executor.submit(_worker_lifecycle, worker_id)
+                    futures[new_future] = worker_id
+
+        consolidated_handler.close()
+        self.main_logger.info("Esquadrão supervisionado concluiu todas as tarefas.")
+        return results_list
+
+    def get_new_workforce_run_dir(self) -> Path:
+        """Cria um diretório de execução único para logs e artefatos."""
+        run_id = f"workforce_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_dir = self.tasks_logs_dir / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
+
+    @staticmethod
+    def _create_error_result(
+            item: Any, status: TaskStatus, reason: str
+    ) -> Dict[str, Any]:
+        """Cria um dicionário de resultado de erro padronizado."""
+        return {"item": item, "status": status.value, "motivo": reason}
+
     def run_tasks_in_squad(
             self,
             base_snapshot_id: str,
@@ -137,9 +257,7 @@ class Orchestrator:
             item_processing_function: Callable[[Worker, Any], Any],
             squad_size: Optional[int] = None,
     ) -> List[Any]:
-        """
-        Executa tarefas num "esquadrão" de workers persistentes.
-        """
+        # ... (código original deste método, sem alterações)
         if not task_items:
             self.main_logger.warning(
                 "Nenhum item de tarefa fornecido. Encerrando a execução do esquadrão."
@@ -148,7 +266,7 @@ class Orchestrator:
 
         workforce_run_dir = self.get_new_workforce_run_dir()
         self.main_logger.info(
-            f"Iniciando esquadrão. Logs e artefatos em: {workforce_run_dir}"
+            f"Iniciando esquadrão (modo Lote). Logs e artefatos em: {workforce_run_dir}"
         )
 
         log_config = self.settings.get("logging", {})
@@ -268,17 +386,3 @@ class Orchestrator:
             for d in worker_dirs:
                 shutil.rmtree(d, ignore_errors=True)
             consolidated_handler.close()
-
-    def get_new_workforce_run_dir(self) -> Path:
-        """Cria um diretório de execução único para logs e artefatos."""
-        run_id = f"workforce_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        run_dir = self.tasks_logs_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        return run_dir
-
-    @staticmethod
-    def _create_error_result(
-            item: Any, status: TaskStatus, reason: str
-    ) -> Dict[str, Any]:
-        """Cria um dicionário de resultado de erro padronizado."""
-        return {"item": item, "status": status.value, "motivo": reason}

@@ -20,6 +20,9 @@ pip-delete-this-directory.txt
 /downloads/
 /lib/
 /lib64/
+node_modules
+package.json
+package-lock.json
 .eggs/
 sdist/
 wheel/
