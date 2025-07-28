@@ -91,6 +91,17 @@ class Orchestrator:
                 f"Não foi possível obter informações do snapshot base '{base_snapshot_id}'. Erro: {e}")
             raise
 
+        workforce_run_dir = self.get_new_workforce_run_dir()
+        self.main_logger.info(f"Logs para esta execução em: {workforce_run_dir}")
+
+        log_config = self.settings.get("logging", {})
+        formatter = StructuredFormatter(
+            format_type=log_config.get("format_type", "detailed"),
+            mask_credentials=log_config.get("mask_credentials", True),
+        )
+        consolidated_handler = logging.FileHandler(workforce_run_dir / "consolidated.log", encoding="utf-8")
+        consolidated_handler.setFormatter(formatter)
+
         for config in squad_configs:
             input_queue_name = config['tasks_queue']
             if input_queue_name not in shared_context:
@@ -106,7 +117,8 @@ class Orchestrator:
                     args=(
                         worker_name, base_snapshot_id, driver_info,
                         worker_setup_function, config["processing_function"],
-                        input_queue, shared_context, shutdown_event
+                        input_queue, shared_context, shutdown_event,
+                        workforce_run_dir, consolidated_handler
                     ),
                     daemon=True
                 )
@@ -119,12 +131,13 @@ class Orchestrator:
     def _worker_lifecycle(
             self, worker_name: str, base_snapshot_id: str, driver_info: DriverInfo,
             setup_func: Callable, processing_func: Callable,
-            tasks_queue: queue.Queue, shared_context: Dict, shutdown_event: threading.Event
+            tasks_queue: queue.Queue, shared_context: Dict, shutdown_event: threading.Event,
+            workforce_run_dir: Path, consolidated_handler: logging.Handler
     ):
         """Define o ciclo de vida de um único worker: pegar tarefa, executar e repetir."""
         squad_name = worker_name.split('-')[0]
-        workforce_run_dir = self.get_new_workforce_run_dir(sub_dir=squad_name)
-        factory = WorkerFactory(self.settings, workforce_run_dir)
+        worker_log_dir = workforce_run_dir / squad_name
+        factory = WorkerFactory(self.settings, worker_log_dir)
 
         self.main_logger.info(f"[{worker_name}] Ciclo de vida iniciado.")
 
@@ -138,7 +151,13 @@ class Orchestrator:
                 with tempfile.TemporaryDirectory(prefix=f"worker_{worker_name}_") as temp_dir:
                     profile_dir = Path(temp_dir)
                     self.snapshot_manager.materialize_for_worker(base_snapshot_id, profile_dir)
-                    worker = factory.create_worker(driver_info, profile_dir, worker_name)
+
+                    worker = factory.create_worker(
+                        driver_info,
+                        profile_dir,
+                        worker_name,
+                        consolidated_log_handler=consolidated_handler
+                    )
 
                     with worker:
                         if not setup_func(worker):
@@ -157,8 +176,6 @@ class Orchestrator:
                 tasks_queue.task_done()
 
         self.main_logger.info(f"[{worker_name}] Sinal de encerramento recebido. A finalizar.")
-
-    # --- MÉTODOS ORIGINAIS (MANTIDOS E ATUALIZADOS) ---
 
     def create_snapshot_from_task(
             self,
