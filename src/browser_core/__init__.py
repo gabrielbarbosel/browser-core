@@ -35,7 +35,7 @@ from .snapshots.manager import SnapshotManager
 from .storage.engine import StorageEngine
 
 # --- Tipos e Enums Essenciais ---
-from .types import BrowserType, SelectorType, SnapshotId, DriverInfo, SnapshotData
+from .types import BrowserType, SelectorType, SnapshotId, DriverInfo, SnapshotData, SquadConfig
 
 # A variável __all__ define a API pública explícita do pacote.
 # Apenas os nomes listados aqui serão importados quando um cliente
@@ -64,6 +64,7 @@ __all__ = [
     "SnapshotId",
     "DriverInfo",
     "SnapshotData",
+    "SquadConfig",
     # --- Hierarquia de Exceções ---
     "BrowserCoreError",
     "ConfigurationError",
