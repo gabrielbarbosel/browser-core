@@ -1,12 +1,15 @@
-# Define todos os tipos de dados, Enums e Protocolos para o 'browser-core'.
-#
-# Este arquivo centraliza as estruturas de dados, garantindo consistência
-# e permitindo a verificação estática de tipos no framework. É um
-# componente chave para um código robusto e de fácil manutenção.
+"""
+Define todos os tipos de dados, Enums e Protocolos para o 'browser-core'.
+
+Este arquivo centraliza as estruturas de dados, garantindo consistência
+e permitindo a verificação estática de tipos no framework. É um
+componente chave para um código robusto e de fácil manutenção.
+"""
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict, List, Optional, Protocol, Union, Callable
+
 from typing_extensions import TypedDict
 
 # ==============================================================================
@@ -161,6 +164,17 @@ class SnapshotData(TypedDict):
     created_at: str
     delta: SnapshotDelta
     metadata: Dict[str, Any]
+
+
+class SquadConfig(TypedDict):
+    """
+    Define a configuração para um único esquadrão de workers a ser lançado
+    pelo Orchestrator.
+    """
+    squad_name: str
+    num_workers: int
+    processing_function: Callable[..., Any]
+    tasks_queue: str  # CORRIGIDO: O utilizador fornece o NOME da fila.
 
 
 # ==============================================================================
