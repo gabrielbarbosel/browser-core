@@ -1,3 +1,5 @@
+# CÓDIGO PARA SUBSTITUIR EM: src/browser_core/logging.py
+
 # Fornece um sistema de logging estruturado e configurável para o framework.
 #
 # Este módulo é adaptado para o ciclo de vida de tarefas efêmeras,
@@ -13,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from .types import LoggingConfig
-from .utils import mask_sensitive_data
+from .utils import mask_sensitive_data, ensure_directory
 
 if TYPE_CHECKING:
     from .orchestration.worker import Worker
@@ -132,10 +134,13 @@ def setup_task_logger(
 
     # Adiciona o handler para o arquivo de log individual do worker
     if config.get("to_file", True) and log_dir:
+        # Garante que o diretório de log existe antes de criar o handler.
+        ensure_directory(log_dir)
+
         individual_log_path = log_dir / f"{logger_name}.log"
         file_handler = logging.handlers.RotatingFileHandler(
             filename=individual_log_path,
-            maxBytes=5 * 1024 * 1024,
+            maxBytes=5 * 1024 * 1024,  # 5 MB
             backupCount=3,
             encoding="utf-8",
         )

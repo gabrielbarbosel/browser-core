@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING, Tuple
 
 from selenium.webdriver.remote.webdriver import WebDriver
 
@@ -28,7 +28,7 @@ class SeleniumBaseEngine(ABC):
         )
 
     # --- Método de criação do driver ---
-    def _create_driver(self, profile_dir: Path) -> WebDriver:
+    def _create_driver(self, profile_dir: Path) -> Tuple[WebDriver, int]:
         driver_info: DriverInfo = self._worker.driver_info
         browser_config: BrowserConfig = self._worker.settings.get("browser", {})
         return self._driver_manager.create_driver(
@@ -45,11 +45,11 @@ class SeleniumBaseEngine(ABC):
             options.add_argument("--no-sandbox")
 
     # --- Implementação padrão do contrato AutomationEngine ---
-    def start(self, profile_dir: Path) -> WebDriver:
-        self._driver = self._create_driver(profile_dir)
+    def start(self, profile_dir: Path) -> Tuple[WebDriver, int]:
+        self._driver, driver_pid = self._create_driver(profile_dir)
         self._window_manager = WindowManager(self._worker, driver=self._driver)
         self._configure_driver_timeouts()
-        return self._driver
+        return self._driver, driver_pid
 
     def stop(self) -> None:
         if self._driver:
