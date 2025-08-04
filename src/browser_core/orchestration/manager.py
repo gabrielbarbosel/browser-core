@@ -6,6 +6,7 @@ de tarefas em múltiplos workers.
 import logging
 import queue
 import shutil
+import signal
 import tempfile
 import threading
 import time
@@ -54,10 +55,38 @@ class Orchestrator:
                 self.settings.get("logging", {}).get("level", "INFO").upper()
             )
 
+        self._active_threads: List[threading.Thread] = []
+        self._shutdown_event = threading.Event()
+        signal.signal(signal.SIGINT, self._handle_shutdown_signal)
+        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+
+    def _handle_shutdown_signal(self, signum, frame):
+        """Método chamado para um desligamento organizado via sinais do SO."""
+        self.main_logger.warning(
+            f"Sinal de desligamento ({signal.Signals(signum).name}) recebido. A iniciar limpeza..."
+        )
+        if not self._shutdown_event.is_set():
+            self._shutdown_event.set()
+
+        for thread in self._active_threads:
+            thread.join(timeout=10)
+        self.main_logger.warning("Desligamento organizado concluído.")
+
     def _ensure_driver_is_ready(self, driver_info: DriverInfo) -> None:
         """Garante que o WebDriver necessário está descarregado antes de iniciar os workers."""
         manager = DriverManager(logger=cast(LoggerProtocol, self.main_logger), settings=self.settings)
         try:
+            # Rotina de autolimpeza para processos presos de execuções anteriores
+            self.main_logger.info("A verificar e finalizar processos de driver órfãos antes de iniciar...")
+            try:
+                import psutil
+                for proc in psutil.process_iter(['name']):
+                    if proc.info['name'] in ["chromedriver.exe", "geckodriver.exe"]:
+                        self.main_logger.warning(f"A finalizar processo órfão: {proc.info['name']}")
+                        proc.kill()
+            except (ImportError, Exception) as e:
+                self.main_logger.warning(f"Não foi possível executar a autolimpeza de processos: {e}")
+
             manager.prewarm_driver(driver_info)
         except DriverError as e:
             self.main_logger.error(str(e))
@@ -79,8 +108,8 @@ class Orchestrator:
         """
         self.main_logger.info(f"A iniciar plataforma com {len(squad_configs)} esquadrão(ões).")
         threads: List[threading.Thread] = []
+        self._shutdown_event = shutdown_event  # Usa o evento de desligamento fornecido
 
-        # O framework cria as filas com base nos nomes fornecidos
         shared_context = {name: queue.Queue() for name in queue_names}
 
         try:
@@ -117,7 +146,7 @@ class Orchestrator:
                     args=(
                         worker_name, base_snapshot_id, driver_info,
                         worker_setup_function, config["processing_function"],
-                        input_queue, shared_context, shutdown_event,
+                        input_queue, shared_context, self._shutdown_event,
                         workforce_run_dir, consolidated_handler
                     ),
                     daemon=True
@@ -125,6 +154,7 @@ class Orchestrator:
                 threads.append(thread)
                 thread.start()
 
+        self._active_threads = threads
         self.main_logger.info("Todas as threads dos esquadrões foram lançadas.")
         return threads, shared_context
 
@@ -225,9 +255,6 @@ class Orchestrator:
     ) -> List[Any]:
         """
         Executa uma única lista de tarefas até à sua conclusão.
-
-        Este método mantém uma interface simples para casos de uso diretos,
-        gerindo internamente a nova arquitetura de plataforma.
         """
         self.main_logger.info("A executar em modo de esquadrão supervisionado (interface legada).")
 
@@ -240,7 +267,6 @@ class Orchestrator:
                 error_result = self._create_error_result(task, TaskStatus.TASK_FAILED, str(e))
                 context['results_queue'].put(error_result)
 
-        # Define os nomes das filas que esta função simples necessita
         queue_names = ["main_tasks_queue", "results_queue", "failed_queue"]
 
         squad_config: SquadConfig = {

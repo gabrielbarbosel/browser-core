@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Callable, Dict, Any, Type, cast
+from typing import Optional, Callable, Dict, Any, Type, cast, Tuple
 
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium import webdriver
@@ -135,9 +135,9 @@ class DriverManager:
             driver_info: DriverInfo,
             browser_config: BrowserConfig,
             user_profile_dir: FilePath,
-    ) -> WebDriver:
+    ) -> Tuple[WebDriver, int]:
         """
-        Cria e retorna uma instância de WebDriver com base no nome do navegador.
+        Cria e retorna uma instância de WebDriver e o PID do seu processo.
         """
         browser_name = driver_info.get("name", "").lower()
         requested_version = driver_info.get("version")
@@ -175,7 +175,11 @@ class DriverManager:
             webdriver_cls: Type = mapping["webdriver_cls"]
             service = service_cls(executable_path=driver_path)
             driver = webdriver_cls(service=service, options=options)
-            return driver
+
+            # Captura o PID do processo do serviço do driver
+            driver_pid = driver.service.process.pid
+            self.logger.info(f"Driver iniciado com sucesso. PID do processo: {driver_pid}")
+            return driver, driver_pid
         except Exception as e:
             self.logger.error(
                 f"Erro inesperado ao criar o driver para {browser_name}: {e}",
@@ -189,18 +193,28 @@ class DriverManager:
     def _get_driver_version(self, manager: WDMBaseManager) -> str:
         """Obtém a versão do driver a partir da instância do manager."""
         try:
+            # Abordagem 1: Tenta obter através do método oficial, se existir
+            if hasattr(manager, "get_driver_version"):
+                return manager.get_driver_version()
+
+            # Abordagem 2 (fallback): Tenta acessar o driver e sua versão interna
             driver_obj: Any = getattr(manager, "driver", None)
             if driver_obj and hasattr(driver_obj, "get_version"):
                 return driver_obj.get_version()
-        except AttributeError:
-            self.logger.debug("Atributo 'driver' ou 'get_version' não está disponível.")
+
+            # Abordagem 3 (fallback para versões mais antigas do webdriver-manager):
+            if hasattr(manager, "driver_cache"):
+                # O método get_version_from_last_run pode existir em algumas versões
+                if hasattr(manager.driver_cache, "get_version_from_last_run"):
+                    return manager.driver_cache.get_version_from_last_run()
+
         except Exception as e:
             self.logger.warning(
-                f"Erro inesperado ao obter a versão do driver: {e}",
+                f"Erro inesperado ao obter a versão do driver dinamicamente: {e}",
                 exc_info=True,
             )
 
-        self.logger.warning("Não foi possível obter a versão do driver dinamicamente.")
+        self.logger.warning("Não foi possível obter a versão do driver dinamicamente. Retornando 'desconhecida'.")
         return "desconhecida"
 
     def _apply_chrome_options(

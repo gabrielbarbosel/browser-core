@@ -1,11 +1,13 @@
-# Define a unidade de execução de automação, o Worker.
-
 import time
+import psutil
+import json
+import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union, Tuple
 
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -13,7 +15,7 @@ from ..engines import (
     AutomationEngine,
     SeleniumChromeEngine,
 )
-from ..exceptions import WorkerError, PageLoadError
+from ..exceptions import WorkerError, PageLoadError, BrowserManagementError
 from ..logging import TaskLoggerAdapter
 from ..selectors.element_proxy import ElementProxy
 from ..selectors.multi_proxy import ElementListProxy
@@ -31,14 +33,14 @@ class Worker:
     """
 
     def __init__(
-        self,
-        worker_id: str,
-        driver_info: DriverInfo,
-        profile_dir: Path,
-        logger: "TaskLoggerAdapter",
-        settings: Settings,
-        engine: Optional[AutomationEngine] = None,
-        debug_artifacts_dir: Optional[Path] = None,
+            self,
+            worker_id: str,
+            driver_info: DriverInfo,
+            profile_dir: Path,
+            logger: "TaskLoggerAdapter",
+            settings: Settings,
+            engine: Optional[AutomationEngine] = None,
+            debug_artifacts_dir: Optional[Path] = None,
     ):
         """
         Inicializa a instância do Worker.
@@ -49,10 +51,11 @@ class Worker:
         self.profile_dir = profile_dir
         self.logger = logger
         self.debug_artifacts_dir = debug_artifacts_dir or (
-            self.profile_dir / "debug_artifacts"
+                self.profile_dir / "debug_artifacts"
         )
 
         self._driver: Optional[Any] = None
+        self.driver_pid: Optional[int] = None
         self._is_started = False
 
         self.selector_manager = SelectorManager(
@@ -101,7 +104,8 @@ class Worker:
             start_time = time.time()
             if not self._engine:
                 raise WorkerError("Engine não configurado")
-            self._driver = self._engine.start(self.profile_dir)
+
+            self._driver, self.driver_pid = self._engine.start(self.profile_dir)
             self._is_started = True
             duration = (time.time() - start_time) * 1_000
             self.logger.info(f"Worker iniciado com sucesso em {duration:.2f}ms.")
@@ -111,7 +115,7 @@ class Worker:
             raise WorkerError(f"Falha ao iniciar o worker: {e}", original_error=e)
 
     def stop(self) -> None:
-        """Finaliza a sessão do WebDriver de forma limpa."""
+        """Finaliza a sessão do WebDriver de forma limpa, garantindo o fim do processo."""
         if not self._is_started:
             return
         self.logger.info("Finalizando o worker...")
@@ -119,7 +123,20 @@ class Worker:
             if self._engine:
                 self._engine.stop()
         finally:
+            # Lógica de autolimpeza para garantir que o processo do driver seja encerrado
+            if self.driver_pid and psutil.pid_exists(self.driver_pid):
+                self.logger.warning(
+                    f"O processo do driver (PID: {self.driver_pid}) não foi finalizado corretamente. A forçar o encerramento."
+                )
+                try:
+                    proc = psutil.Process(self.driver_pid)
+                    proc.kill()
+                    self.logger.info(f"Processo do driver (PID: {self.driver_pid}) finalizado com sucesso.")
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                    self.logger.error(f"Falha ao tentar finalizar o processo do driver (PID: {self.driver_pid}): {e}")
+
             self._driver = None
+            self.driver_pid = None
             self._is_started = False
             self.logger.info("Worker finalizado e recursos do navegador libertados.")
 
@@ -154,14 +171,6 @@ class Worker:
     def get(self, definition: SelectorDefinition) -> "ElementProxy":
         """
         Retorna um objeto proxy para um elemento, permitindo a execução de ações fluentes.
-
-        A busca real pelo elemento só ocorre quando uma ação (ex: .click()) é chamada.
-
-        Args:
-            definition: O objeto SelectorDefinition criado com 'create_selector'.
-
-        Returns:
-            Uma instância de ElementProxy pronta para receber ações.
         """
         self._ensure_started()
         return ElementProxy(self, definition)
@@ -179,10 +188,6 @@ class Worker:
     def find_element(self, definition: SelectorDefinition) -> WebElementProtocol:
         """
         Encontra um elemento na página e o retorna imediatamente.
-
-        Este método é obsoleto para uso externo e é mantido para compatibilidade
-        interna do ElementProxy antes da refatoração. Prefira 'get()'.
-        O 'ElementProxy' chama 'selector_manager.find_element' diretamente.
         """
         self._ensure_started()
         if not self._engine:
@@ -195,6 +200,34 @@ class Worker:
         if not self._engine:
             raise WorkerError("Engine não configurado")
         return self._engine.execute_script(script, *args)
+
+    # --- Métodos de controle de iframe ---
+
+    def switch_to_iframe(self, frame_reference: Union[str, int, "ElementProxy", WebElement]) -> None:
+        """
+        Muda o foco do driver para um iframe específico.
+        """
+        self._ensure_started()
+        target = frame_reference
+        if isinstance(frame_reference, ElementProxy):
+            target = frame_reference._find()
+
+        self.logger.info(f"Mudando contexto para o iframe: '{frame_reference}'")
+        try:
+            self.driver.switch_to.frame(target)
+        except Exception as e:
+            raise BrowserManagementError(
+                f"Não foi possível mudar para o iframe '{frame_reference}'",
+                original_error=e
+            )
+
+    def switch_to_default_content(self) -> None:
+        """
+        Retorna o foco do driver para o contexto principal da página.
+        """
+        self._ensure_started()
+        self.logger.info("Retornando para o contexto principal da página.")
+        self.driver.switch_to.default_content()
 
     # --- Métodos de Gestão de Abas (Janelas) ---
 
@@ -226,23 +259,65 @@ class Worker:
 
     # --- Métodos de Depuração e Internos ---
 
-    def capture_debug_artifacts(self, name: str) -> Optional[Path]:
-        """Captura artefatos de depuração do estado atual do navegador."""
+    def capture_debug_artifacts(
+            self, name: str, exc_info: Optional[Tuple] = None
+    ) -> Optional[Path]:
+        """
+        Captura um conjunto rico de artefatos de depuração do estado atual.
+        """
         if not self.is_running:
             self.logger.warning(
                 "Não é possível capturar artefatos, o worker não está iniciado."
             )
             return None
+
         try:
             artifacts_dir = ensure_directory(self.debug_artifacts_dir)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             capture_name = f"{timestamp}_{name}"
             capture_path = ensure_directory(artifacts_dir / capture_name)
+
+            debug_context = {
+                "capture_time": datetime.now().isoformat(),
+                "worker_id": self.worker_id,
+                "current_url": self._driver.current_url,
+                "page_title": self._driver.title,
+                "window_handles": self._driver.window_handles,
+                "current_window_handle": self._driver.current_window_handle,
+            }
+
+            if exc_info:
+                exc_type, exc_val, exc_tb = exc_info
+                debug_context["exception"] = {
+                    "type": str(exc_type.__name__),
+                    "message": str(exc_val),
+                    "traceback": "".join(traceback.format_exception(exc_type, exc_val, exc_tb)),
+                }
+
+            # 1. Salva o Screenshot
             screenshot_file = capture_path / "screenshot.png"
             self._driver.save_screenshot(str(screenshot_file))
+
+            # 2. Salva o DOM da página
             dom_file = capture_path / "dom.html"
             with open(dom_file, "w", encoding="utf-8") as f:
                 f.write(self._driver.page_source)
+
+            # 3. Salva os logs do console do navegador
+            try:
+                console_logs = self._driver.get_log('browser')
+                logs_file = capture_path / "browser_console.json"
+                with open(logs_file, "w", encoding="utf-8") as f:
+                    json.dump(console_logs, f, indent=2, ensure_ascii=False)
+            except Exception as log_e:
+                self.logger.warning(f"Não foi possível capturar os logs do console do navegador: {log_e}")
+                debug_context["console_logs_error"] = str(log_e)
+
+            # 4. Salva o arquivo de manifesto com todo o contexto
+            context_file = capture_path / "debug_context.json"
+            with open(context_file, "w", encoding="utf-8") as f:
+                json.dump(debug_context, f, indent=2, ensure_ascii=False)
+
             self.logger.info(
                 f"Artefatos de depuração '{name}' capturados em: {capture_path}"
             )
@@ -270,5 +345,7 @@ class Worker:
                 "Exceção não tratada dentro do bloco 'with' do worker.",
                 exc_info=(exc_type, exc_val, exc_tb),
             )
-            self.capture_debug_artifacts("unhandled_exception")
+            self.capture_debug_artifacts(
+                "unhandled_exception", exc_info=(exc_type, exc_val, exc_tb)
+            )
         self.stop()
