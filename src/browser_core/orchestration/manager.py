@@ -92,6 +92,69 @@ class Orchestrator:
             self.main_logger.error(str(e))
             raise
 
+    def _prepare_workforce_environment(
+            self, base_snapshot_id: str
+    ) -> Tuple[DriverInfo, Path, logging.Handler]:
+        """Configura driver e logging compartilhado para os esquadrões."""
+        try:
+            driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)[
+                "base_driver"
+            ]
+            self._ensure_driver_is_ready(driver_info)
+        except (TypeError, SnapshotError) as e:
+            self.main_logger.critical(
+                f"Não foi possível obter informações do snapshot base '{base_snapshot_id}'. Erro: {e}"
+            )
+            raise
+
+        workforce_run_dir = self.get_new_workforce_run_dir()
+        self.main_logger.info(f"Logs para esta execução em: {workforce_run_dir}")
+
+        log_config = self.settings.get("logging", {})
+        formatter = StructuredFormatter(
+            format_type=log_config.get("format_type", "detailed"),
+            mask_credentials=log_config.get("mask_credentials", True),
+        )
+        consolidated_handler = logging.FileHandler(
+            workforce_run_dir / "consolidated.log", encoding="utf-8"
+        )
+        consolidated_handler.setFormatter(formatter)
+
+        return driver_info, workforce_run_dir, consolidated_handler
+
+    def _spawn_worker_thread(
+            self,
+            config: SquadConfig,
+            worker_index: int,
+            base_snapshot_id: str,
+            driver_info: DriverInfo,
+            worker_setup_function: Callable[[Worker], bool],
+            input_queue: queue.Queue,
+            shared_context: Dict[str, queue.Queue],
+            workforce_run_dir: Path,
+            consolidated_handler: logging.Handler,
+    ) -> threading.Thread:
+        """Cria e inicia uma thread de worker para o esquadrão fornecido."""
+        worker_name = f"{config['squad_name']}-{worker_index + 1}"
+        thread = threading.Thread(
+            target=self._worker_lifecycle,
+            args=(
+                worker_name,
+                base_snapshot_id,
+                driver_info,
+                worker_setup_function,
+                config["processing_function"],
+                input_queue,
+                shared_context,
+                self._shutdown_event,
+                workforce_run_dir,
+                consolidated_handler,
+            ),
+            daemon=True,
+        )
+        thread.start()
+        return thread
+
     # --- ARQUITETURA DE PLATAFORMA MULTI-ESQUADRÃO ---
 
     def launch_squads(
@@ -112,24 +175,9 @@ class Orchestrator:
 
         shared_context = {name: queue.Queue() for name in queue_names}
 
-        try:
-            driver_info = self.snapshot_manager.get_snapshot_data(base_snapshot_id)["base_driver"]
-            self._ensure_driver_is_ready(driver_info)
-        except (TypeError, SnapshotError) as e:
-            self.main_logger.critical(
-                f"Não foi possível obter informações do snapshot base '{base_snapshot_id}'. Erro: {e}")
-            raise
-
-        workforce_run_dir = self.get_new_workforce_run_dir()
-        self.main_logger.info(f"Logs para esta execução em: {workforce_run_dir}")
-
-        log_config = self.settings.get("logging", {})
-        formatter = StructuredFormatter(
-            format_type=log_config.get("format_type", "detailed"),
-            mask_credentials=log_config.get("mask_credentials", True),
+        driver_info, workforce_run_dir, consolidated_handler = (
+            self._prepare_workforce_environment(base_snapshot_id)
         )
-        consolidated_handler = logging.FileHandler(workforce_run_dir / "consolidated.log", encoding="utf-8")
-        consolidated_handler.setFormatter(formatter)
 
         for config in squad_configs:
             input_queue_name = config['tasks_queue']
@@ -140,19 +188,18 @@ class Orchestrator:
             input_queue = shared_context[input_queue_name]
 
             for i in range(config["num_workers"]):
-                worker_name = f"{config['squad_name']}-{i + 1}"
-                thread = threading.Thread(
-                    target=self._worker_lifecycle,
-                    args=(
-                        worker_name, base_snapshot_id, driver_info,
-                        worker_setup_function, config["processing_function"],
-                        input_queue, shared_context, self._shutdown_event,
-                        workforce_run_dir, consolidated_handler
-                    ),
-                    daemon=True
+                thread = self._spawn_worker_thread(
+                    config,
+                    i,
+                    base_snapshot_id,
+                    driver_info,
+                    worker_setup_function,
+                    input_queue,
+                    shared_context,
+                    workforce_run_dir,
+                    consolidated_handler,
                 )
                 threads.append(thread)
-                thread.start()
 
         self._active_threads = threads
         self.main_logger.info("Todas as threads dos esquadrões foram lançadas.")
@@ -304,9 +351,13 @@ class Orchestrator:
 
         return all_results
 
-    def get_new_workforce_run_dir(self, sub_dir: Optional[str] = None) -> Path:
+    def get_new_workforce_run_dir(
+            self, run_name_prefix: str = "run", sub_dir: Optional[str] = None
+    ) -> Path:
         """Cria um diretório de execução único para logs e artefatos."""
-        run_id = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        prefix = f"{run_name_prefix}_" if run_name_prefix else ""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_id = f"{prefix}{timestamp}"
         run_dir = self.tasks_logs_dir / run_id
         if sub_dir:
             run_dir = run_dir / sub_dir
