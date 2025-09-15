@@ -74,6 +74,13 @@ class ElementProxy:
 
         return self._element
 
+    def get_element(self) -> WebElementProtocol:
+        """
+        Retorna o elemento WebElement subjacente.
+        Método público para acessar o elemento real.
+        """
+        return self._find()
+
     @property
     def text(self) -> _ValueProxy:
         """Retorna o conteúdo de texto visível do elemento."""
@@ -89,13 +96,39 @@ class ElementProxy:
         return self._find().get_attribute(name)
 
     def click(self) -> "ElementProxy":
-        """Executa a ação de clique no elemento."""
+        """Executa a ação de clique no elemento com movimento humano."""
         element = self._find()  # Garante que _used_selector seja preenchido
+        
+        # Enhanced human-like behavior (optional)
+        try:
+            if hasattr(self, '_simulate_human_behavior'):
+                self._simulate_human_behavior()
+        except Exception:
+            pass
+        
         self._wait_actionable()
         self.worker.logger.info(
             f"A clicar no elemento definido por: '{self._used_selector}'"
         )
-        element.click()
+        
+        # Use ActionChains for more human-like clicking
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains
+            actions = ActionChains(self.worker.driver)
+            
+            # Move to element with slight offset for more human-like behavior
+            import random
+            offset_x = random.randint(-2, 2)
+            offset_y = random.randint(-2, 2)
+            
+            actions.move_to_element_with_offset(element, offset_x, offset_y)
+            actions.pause(random.uniform(0.1, 0.3))  # Random pause before click
+            actions.click()
+            actions.perform()
+        except Exception:
+            # Fallback to regular click
+            element.click()
+        
         return self
 
     # --- Propriedades de estado ---
@@ -143,6 +176,18 @@ class ElementProxy:
         masked_text = mask_sensitive_data(text_to_send)
 
         element = self._find()
+        # Throttle opcional antes da ação
+        throttle = self.worker.settings.get("throttle", {})
+        try:
+            min_delay = int(throttle.get("min_action_delay_ms", 0)) / 1000.0
+            max_delay = int(throttle.get("max_action_delay_ms", 0)) / 1000.0
+            if max_delay > 0 and max_delay >= min_delay:
+                import time as _t
+                import random as _r
+
+                _t.sleep(_r.uniform(min_delay, max_delay))
+        except Exception:
+            pass
         self._wait_actionable()
         self.worker.logger.info(
             f"A enviar texto '{masked_text}' para o elemento: '{self._used_selector}'"
@@ -154,6 +199,18 @@ class ElementProxy:
     def clear(self) -> "ElementProxy":
         """Limpa o conteúdo de um campo de texto (input, textarea)."""
         element = self._find()
+        # Throttle opcional antes da ação
+        throttle = self.worker.settings.get("throttle", {})
+        try:
+            min_delay = int(throttle.get("min_action_delay_ms", 0)) / 1000.0
+            max_delay = int(throttle.get("max_action_delay_ms", 0)) / 1000.0
+            if max_delay > 0 and max_delay >= min_delay:
+                import time as _t
+                import random as _r
+
+                _t.sleep(_r.uniform(min_delay, max_delay))
+        except Exception:
+            pass
         self._wait_actionable()
         self.worker.logger.info(
             f"A limpar o conteúdo do elemento: '{self._used_selector}'"
@@ -245,3 +302,28 @@ class _ValueProxy:
             time.sleep(0.5)
             last = self.get()
         raise AssertionError(f"Esperado '{expected}', obtido '{last}'")
+    
+    def _simulate_human_behavior(self) -> None:
+        """Simula comportamento humano com delays e movimentos aleatórios."""
+        import time
+        import random
+        
+        # Random delay before action
+        delay = random.uniform(0.1, 0.5)
+        time.sleep(delay)
+        
+        # Random mouse movement simulation
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains
+            actions = ActionChains(self.worker.driver)
+            
+            # Random small movements to simulate human mouse behavior
+            for _ in range(random.randint(1, 3)):
+                offset_x = random.randint(-10, 10)
+                offset_y = random.randint(-10, 10)
+                actions.move_by_offset(offset_x, offset_y)
+                actions.pause(random.uniform(0.05, 0.15))
+            
+            actions.perform()
+        except Exception:
+            pass

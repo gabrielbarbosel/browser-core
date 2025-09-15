@@ -33,14 +33,14 @@ class Worker:
     """
 
     def __init__(
-            self,
-            worker_id: str,
-            driver_info: DriverInfo,
-            profile_dir: Path,
-            logger: "TaskLoggerAdapter",
-            settings: Settings,
-            engine: Optional[AutomationEngine] = None,
-            debug_artifacts_dir: Optional[Path] = None,
+        self,
+        worker_id: str,
+        driver_info: DriverInfo,
+        profile_dir: Path,
+        logger: "TaskLoggerAdapter",
+        settings: Settings,
+        engine: Optional[AutomationEngine] = None,
+        debug_artifacts_dir: Optional[Path] = None,
     ):
         """
         Inicializa a instância do Worker.
@@ -51,7 +51,7 @@ class Worker:
         self.profile_dir = profile_dir
         self.logger = logger
         self.debug_artifacts_dir = debug_artifacts_dir or (
-                self.profile_dir / "debug_artifacts"
+            self.profile_dir / "debug_artifacts"
         )
 
         self._driver: Optional[Any] = None
@@ -106,6 +106,138 @@ class Worker:
                 raise WorkerError("Engine não configurado")
 
             self._driver, self.driver_pid = self._engine.start(self.profile_dir)
+            # Enhanced stealth injection for anti-bot detection
+            try:
+                browser_cfg = self.settings.get("browser", {})
+                if browser_cfg.get("stealth"):
+                    self.logger.info(f"[{self.worker_id}] Ativando modo stealth...")
+                    self.execute_script(
+                        """
+                        // Enhanced anti-detection measures
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                        Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR','pt','en'] });
+                        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+                        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+                        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                        Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 0 });
+                        
+                        // Override automation detection
+                        Object.defineProperty(window, 'chrome', { get: () => ({ runtime: {} }) });
+                        Object.defineProperty(navigator, 'permissions', { 
+                            get: () => ({
+                                query: (params) => Promise.resolve({ state: 'granted' })
+                            })
+                        });
+                        
+                        // Override WebRTC fingerprinting
+                        Object.defineProperty(navigator, 'mediaDevices', { 
+                            get: () => ({
+                                enumerateDevices: () => Promise.resolve([])
+                            })
+                        });
+                        
+                        // Override canvas fingerprinting
+                        const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                        HTMLCanvasElement.prototype.toDataURL = function() {
+                            const context = this.getContext('2d');
+                            if (context) {
+                                const imageData = context.getImageData(0, 0, this.width, this.height);
+                                for (let i = 0; i < imageData.data.length; i += 4) {
+                                    imageData.data[i] = imageData.data[i] + Math.floor(Math.random() * 10) - 5;
+                                    imageData.data[i + 1] = imageData.data[i + 1] + Math.floor(Math.random() * 10) - 5;
+                                    imageData.data[i + 2] = imageData.data[i + 2] + Math.floor(Math.random() * 10) - 5;
+                                }
+                                context.putImageData(imageData, 0, 0);
+                            }
+                            return originalToDataURL.apply(this, arguments);
+                        };
+                        
+                        // Override WebGL fingerprinting
+                        const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
+                        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                            if (parameter === 37445) return 'Intel Inc.';
+                            if (parameter === 37446) return 'Intel(R) HD Graphics 620';
+                            return originalGetParameter.apply(this, arguments);
+                        };
+                        
+                        // Override audio context fingerprinting
+                        const originalCreateAnalyser = AudioContext.prototype.createAnalyser;
+                        AudioContext.prototype.createAnalyser = function() {
+                            const analyser = originalCreateAnalyser.apply(this, arguments);
+                            const originalGetFloatFrequencyData = analyser.getFloatFrequencyData;
+                            analyser.getFloatFrequencyData = function(array) {
+                                originalGetFloatFrequencyData.apply(this, arguments);
+                                for (let i = 0; i < array.length; i++) {
+                                    array[i] = array[i] + Math.random() * 0.0001;
+                                }
+                            };
+                            return analyser;
+                        };
+                        
+                        // Override battery API
+                        Object.defineProperty(navigator, 'getBattery', { 
+                            get: () => () => Promise.resolve({
+                                charging: true,
+                                chargingTime: 0,
+                                dischargingTime: Infinity,
+                                level: 1
+                            })
+                        });
+                        
+                        // Override timezone
+                        Object.defineProperty(Intl, 'DateTimeFormat', {
+                            get: () => function() {
+                                return {
+                                    resolvedOptions: () => ({ timeZone: 'America/Sao_Paulo' })
+                                };
+                            }
+                        });
+                        
+                        // Override screen properties
+                        Object.defineProperty(screen, 'availHeight', { get: () => 1040 });
+                        Object.defineProperty(screen, 'availWidth', { get: () => 1920 });
+                        Object.defineProperty(screen, 'height', { get: () => 1080 });
+                        Object.defineProperty(screen, 'width', { get: () => 1920 });
+                        Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+                        Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+                        
+                        // Override connection properties
+                        Object.defineProperty(navigator, 'connection', { 
+                            get: () => ({
+                                effectiveType: '4g',
+                                rtt: 50,
+                                downlink: 10
+                            })
+                        });
+                        
+                        // Override memory info
+                        Object.defineProperty(performance, 'memory', { 
+                            get: () => ({
+                                usedJSHeapSize: 10000000,
+                                totalJSHeapSize: 20000000,
+                                jsHeapSizeLimit: 2000000000
+                            })
+                        });
+                        
+                        // Override notification permission
+                        const originalQuery = window.navigator.permissions.query;
+                        window.navigator.permissions.query = (parameters) => (
+                          parameters.name === 'notifications'
+                            ? Promise.resolve({ state: Notification.permission })
+                            : originalQuery(parameters)
+                        );
+                        
+                        // Override automation indicators
+                        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+                        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+                        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+                        """
+                    )
+                    self.logger.info(f"[{self.worker_id}] Modo stealth ativado com sucesso.")
+            except Exception as e:
+                self.logger.warning(f"[{self.worker_id}] Falha ao ativar modo stealth: {e}")
+                pass
             self._is_started = True
             duration = (time.time() - start_time) * 1_000
             self.logger.info(f"Worker iniciado com sucesso em {duration:.2f}ms.")
@@ -131,9 +263,13 @@ class Worker:
                 try:
                     proc = psutil.Process(self.driver_pid)
                     proc.kill()
-                    self.logger.info(f"Processo do driver (PID: {self.driver_pid}) finalizado com sucesso.")
+                    self.logger.info(
+                        f"Processo do driver (PID: {self.driver_pid}) finalizado com sucesso."
+                    )
                 except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    self.logger.error(f"Falha ao tentar finalizar o processo do driver (PID: {self.driver_pid}): {e}")
+                    self.logger.error(
+                        f"Falha ao tentar finalizar o processo do driver (PID: {self.driver_pid}): {e}"
+                    )
 
             self._driver = None
             self.driver_pid = None
@@ -203,14 +339,16 @@ class Worker:
 
     # --- Métodos de controle de iframe ---
 
-    def switch_to_iframe(self, frame_reference: Union[str, int, "ElementProxy", WebElement]) -> None:
+    def switch_to_iframe(
+        self, frame_reference: Union[str, int, "ElementProxy", WebElement]
+    ) -> None:
         """
         Muda o foco do driver para um iframe específico.
         """
         self._ensure_started()
         target = frame_reference
         if isinstance(frame_reference, ElementProxy):
-            target = frame_reference._find()
+            target = frame_reference.get_element()
 
         self.logger.info(f"Mudando contexto para o iframe: '{frame_reference}'")
         try:
@@ -218,7 +356,7 @@ class Worker:
         except Exception as e:
             raise BrowserManagementError(
                 f"Não foi possível mudar para o iframe '{frame_reference}'",
-                original_error=e
+                original_error=e,
             )
 
     def switch_to_default_content(self) -> None:
@@ -260,7 +398,7 @@ class Worker:
     # --- Métodos de Depuração e Internos ---
 
     def capture_debug_artifacts(
-            self, name: str, exc_info: Optional[Tuple] = None
+        self, name: str, exc_info: Optional[Tuple] = None
     ) -> Optional[Path]:
         """
         Captura um conjunto rico de artefatos de depuração do estado atual.
@@ -291,7 +429,9 @@ class Worker:
                 debug_context["exception"] = {
                     "type": str(exc_type.__name__),
                     "message": str(exc_val),
-                    "traceback": "".join(traceback.format_exception(exc_type, exc_val, exc_tb)),
+                    "traceback": "".join(
+                        traceback.format_exception(exc_type, exc_val, exc_tb)
+                    ),
                 }
 
             # 1. Salva o Screenshot
@@ -305,12 +445,14 @@ class Worker:
 
             # 3. Salva os logs do console do navegador
             try:
-                console_logs = self._driver.get_log('browser')
+                console_logs = self._driver.get_log("browser")
                 logs_file = capture_path / "browser_console.json"
                 with open(logs_file, "w", encoding="utf-8") as f:
                     json.dump(console_logs, f, indent=2, ensure_ascii=False)
             except Exception as log_e:
-                self.logger.warning(f"Não foi possível capturar os logs do console do navegador: {log_e}")
+                self.logger.warning(
+                    f"Não foi possível capturar os logs do console do navegador: {log_e}"
+                )
                 debug_context["console_logs_error"] = str(log_e)
 
             # 4. Salva o arquivo de manifesto com todo o contexto

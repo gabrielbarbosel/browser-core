@@ -109,6 +109,10 @@ class BrowserConfig(TypedDict, total=False):
     incognito: bool
     disable_gpu: bool
     additional_args: List[str]
+    # Anti-bot/stealth helpers
+    proxy: Optional[str]
+    random_user_agent: bool
+    stealth: bool
 
 
 class TimeoutConfig(TypedDict, total=False):
@@ -119,6 +123,13 @@ class TimeoutConfig(TypedDict, total=False):
     script_ms: TimeoutMs
     # Adicionado em uma etapa anterior para consistência
     window_management_ms: TimeoutMs
+
+
+class ThrottleConfig(TypedDict, total=False):
+    """Define atrasos opcionais para humanizar ações (em ms)."""
+
+    min_action_delay_ms: TimeoutMs
+    max_action_delay_ms: TimeoutMs
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -171,6 +182,7 @@ class SquadConfig(TypedDict):
     Define a configuração para um único esquadrão de workers a ser lançado
     pelo Orchestrator.
     """
+
     squad_name: str
     num_workers: int
     processing_function: Callable[..., Any]

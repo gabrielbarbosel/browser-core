@@ -17,4 +17,5 @@ class ElementListProxy(list):
 
     def get_texts(self) -> List[str]:
         """Retorna o texto de cada elemento."""
-        return [el.text for el in self]
+        # Usa .text.get() para acionar o ValueProxy corretamente
+        return [el.text.get() for el in self]

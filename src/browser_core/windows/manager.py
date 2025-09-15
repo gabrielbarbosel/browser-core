@@ -52,7 +52,7 @@ class WindowManager:
         """Retorna o handle da aba atualmente em foco."""
         try:
             return self._driver.current_window_handle
-        except NoSuchWindowException:
+        except (NoSuchWindowException, WebDriverException):
             self._logger.warning(
                 "Não foi possível obter o handle da janela atual, o navegador pode ter sido fechado."
             )

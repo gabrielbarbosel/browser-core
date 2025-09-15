@@ -1,5 +1,3 @@
-# CÓDIGO PARA SUBSTITUIR EM: src/browser_core/logging.py
-
 # Fornece um sistema de logging estruturado e configurável para o framework.
 #
 # Este módulo é adaptado para o ciclo de vida de tarefas efêmeras,
@@ -13,6 +11,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
+
+from selenium.common.exceptions import WebDriverException
 
 from .types import LoggingConfig
 from .utils import mask_sensitive_data, ensure_directory
@@ -97,8 +97,8 @@ class TaskLoggerAdapter(logging.LoggerAdapter):
             try:
                 if current_tab := self.worker_instance.current_tab:
                     kwargs["extra"]["tab_name"] = current_tab.name
-            except AttributeError:
-                # Evita que uma falha no logging (ex: aba fechada) quebre a aplicação.
+            except (AttributeError, WebDriverException):
+                # Evita que uma falha no logging (ex: driver fechado) quebre a aplicação.
                 pass
 
         return msg, kwargs
@@ -106,10 +106,10 @@ class TaskLoggerAdapter(logging.LoggerAdapter):
 
 # noinspection GrazieInspection
 def setup_task_logger(
-        logger_name: str,
-        log_dir: Path,
-        config: LoggingConfig,
-        consolidated_handler: Optional[logging.Handler] = None,
+    logger_name: str,
+    log_dir: Path,
+    config: LoggingConfig,
+    consolidated_handler: Optional[logging.Handler] = None,
 ) -> TaskLoggerAdapter:
     """
     Cria e configura um logger específico para uma única tarefa/worker.

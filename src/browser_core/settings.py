@@ -61,6 +61,9 @@ def default_settings() -> Settings:
     base_output_path = Path("./browser-core-output")
 
     settings: Settings = {
+        # --- Engine de Automação ---
+        # Pode ser 'selenium' ou 'playwright'
+        "engine": "selenium",
         # --- Configurações do Navegador ---
         "browser": {
             "headless": True,
@@ -70,6 +73,12 @@ def default_settings() -> Settings:
             "incognito": False,
             "disable_gpu": True,
             "additional_args": [],
+            # Novos controles anti-bot (opcionais)
+            "proxy": None,
+            "proxy_rotation": False,
+            "proxy_list": [],
+            "random_user_agent": False,
+            "stealth": False,
         },
         # --- Configurações de Timeout (em milissegundos) ---
         "timeouts": {
@@ -78,6 +87,19 @@ def default_settings() -> Settings:
             "script_ms": 30_000,
             # Timeout para operações de gestão de janelas, como esperar uma nova aba abrir.
             "window_management_ms": 10_000,
+            # Timeouts usados por ElementProxy e asserts utilitários
+            "element_action_ms": 5_000,
+            "assertion_ms": 5_000,
+        },
+        # --- Throttle opcional para ações de UI ---
+        "throttle": {
+            "min_action_delay_ms": 0,
+            "max_action_delay_ms": 0,
+        },
+        # --- Estratégia de Retentativas ---
+        "retry": {
+            "max_attempts": 3,
+            "backoff_ms": 1_000,
         },
         # --- Configurações de Logging ---
         "logging": {
@@ -139,4 +161,7 @@ def custom_settings(overrides: dict[str, Any]) -> Settings:
             if key not in custom_paths:
                 base_paths[key] = new_base_path / suffix
 
-    return cast(Settings, deep_merge_dicts(cast(dict[str, Any], base), cast(dict[str, Any], overrides)))
+    return cast(
+        Settings,
+        deep_merge_dicts(cast(dict[str, Any], base), cast(dict[str, Any], overrides)),
+    )

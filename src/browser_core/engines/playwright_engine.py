@@ -35,11 +35,23 @@ class PlaywrightEngine:
         """Inicia o navegador Playwright e retorna a página principal."""
         self._worker.logger.info("Iniciando PlaywrightEngine")
         self._playwright = sync_playwright().start()
-        browser_type = getattr(
-            self._playwright, self._config.get("browser", "chromium")
-        )
+        browser_key = self._worker.driver_info.get("name", "chromium").lower()
+        if browser_key not in ("chromium", "firefox", "webkit"):
+            browser_key = "chromium"
+        browser_type = getattr(self._playwright, browser_key)
         self._browser = browser_type.launch(headless=self._config.get("headless", True))
-        self._context = self._browser.new_context(user_data_dir=str(profile_dir))
+        # Usa contexto persistente (no Playwright, via browser_type.launch_persistent_context)
+        # para aproveitar diretórios de perfil como nos snapshots
+        try:
+            self._context = browser_type.launch_persistent_context(
+                user_data_dir=str(profile_dir),
+                headless=self._config.get("headless", True),
+            )
+            # Quando usamos persistent context, o browser retornado é acessível via _context.browser
+            self._browser = self._context.browser  # type: ignore[attr-defined]
+        except Exception:
+            # Fallback para contexto não persistente caso a API não esteja disponível
+            self._context = self._browser.new_context()
         self._page = self._context.new_page()
         return self._page
 
