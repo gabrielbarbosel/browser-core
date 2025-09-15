@@ -32,9 +32,9 @@ class DriverManager:
     """
 
     def __init__(
-            self,
-            logger: LoggerProtocol,
-            settings: Settings,
+        self,
+        logger: LoggerProtocol,
+        settings: Settings,
     ):
         """
         Inicializa o gestor de drivers.
@@ -71,16 +71,20 @@ class DriverManager:
 
     @staticmethod
     def _get_driver_manager_instance(
-            manager_cls: Type[WDMBaseManager],
-            browser_name: str,
-            version: Optional[str],
-            cache: Optional[DriverCacheManager],
+        manager_cls: Type[WDMBaseManager],
+        browser_name: str,
+        version: Optional[str],
+        cache: Optional[DriverCacheManager],
     ) -> WDMBaseManager:
         """Cria uma instância do manager de driver apropriado com os argumentos corretos."""
         if browser_name == BrowserType.CHROME.value:
-            driver_version_arg = version if version and version.lower() != "latest" else None
+            driver_version_arg = (
+                version if version and version.lower() != "latest" else None
+            )
             chrome_manager_cls = cast(Type[ChromeDriverManager], manager_cls)
-            return chrome_manager_cls(driver_version=driver_version_arg, cache_manager=cache)
+            return chrome_manager_cls(
+                driver_version=driver_version_arg, cache_manager=cache
+            )
 
         # O GeckoDriverManager não aceita o argumento 'driver_version'.
         return manager_cls(cache_manager=cache)
@@ -131,10 +135,10 @@ class DriverManager:
             self.driver_cache_dir = None
 
     def create_driver(
-            self,
-            driver_info: DriverInfo,
-            browser_config: BrowserConfig,
-            user_profile_dir: FilePath,
+        self,
+        driver_info: DriverInfo,
+        browser_config: BrowserConfig,
+        user_profile_dir: FilePath,
     ) -> Tuple[WebDriver, int]:
         """
         Cria e retorna uma instância de WebDriver e o PID do seu processo.
@@ -151,7 +155,7 @@ class DriverManager:
 
         options = mapping["options_cls"]()
         applier: Callable = mapping["options_applier"]
-        applier(options, browser_config, user_profile_dir)
+        applier(options, browser_config, user_profile_dir, driver_info)
 
         cache = (
             DriverCacheManager(root_dir=str(self.driver_cache_dir))
@@ -178,7 +182,9 @@ class DriverManager:
 
             # Captura o PID do processo do serviço do driver
             driver_pid = driver.service.process.pid
-            self.logger.info(f"Driver iniciado com sucesso. PID do processo: {driver_pid}")
+            self.logger.info(
+                f"Driver iniciado com sucesso. PID do processo: {driver_pid}"
+            )
             return driver, driver_pid
         except Exception as e:
             self.logger.error(
@@ -214,16 +220,168 @@ class DriverManager:
                 exc_info=True,
             )
 
-        self.logger.warning("Não foi possível obter a versão do driver dinamicamente. Retornando 'desconhecida'.")
+        self.logger.warning(
+            "Não foi possível obter a versão do driver dinamicamente. Retornando 'desconhecida'."
+        )
         return "desconhecida"
 
     def _apply_chrome_options(
-            self, options: ChromeOptions, config: BrowserConfig, profile_dir: FilePath
+        self, options: ChromeOptions, config: BrowserConfig, profile_dir: FilePath, driver_info: Optional[DriverInfo] = None
     ) -> None:
         """Centraliza a aplicação de todas as opções de configuração do Chrome."""
+        # Enhanced anti-detection measures
         options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--allow-running-insecure-content")
+        options.add_argument("--disable-features=VizDisplayCompositor")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-breakpad")
+        options.add_argument("--disable-component-update")
+        options.add_argument("--disable-domain-reliability")
+        options.add_argument("--disable-features=TranslateUI")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-web-resources")
+        options.add_argument("--disable-logging")
+        options.add_argument("--disable-permissions-api")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-sync-preferences")
+        
+        # Additional stealth arguments for enhanced anti-detection
+        options.add_argument("--disable-features=VizDisplayCompositor")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-breakpad")
+        options.add_argument("--disable-component-update")
+        options.add_argument("--disable-domain-reliability")
+        options.add_argument("--disable-features=TranslateUI")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-web-resources")
+        options.add_argument("--disable-logging")
+        options.add_argument("--disable-permissions-api")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-sync-preferences")
+        
+        # Enhanced stealth options
+        options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         options.add_experimental_option("useAutomationExtension", False)
+        
+        # Additional stealth measures
+        prefs = {
+            "profile.default_content_setting_values": {
+                "notifications": 2,
+                "geolocation": 2,
+                "media_stream": 2,
+            },
+            "profile.managed_default_content_settings": {
+                "images": 2
+            },
+            "profile.default_content_settings": {
+                "popups": 0
+            }
+        }
+        options.add_experimental_option("prefs", prefs)
+        
+        # Enhanced request header spoofing
+        options.add_argument("--disable-features=VizDisplayCompositor")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-breakpad")
+        options.add_argument("--disable-component-update")
+        options.add_argument("--disable-domain-reliability")
+        options.add_argument("--disable-features=TranslateUI")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-web-resources")
+        options.add_argument("--disable-logging")
+        options.add_argument("--disable-permissions-api")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-sync-preferences")
+
+        # Enhanced Proxy Support with Rotation
+        proxy_url = config.get("proxy")
+        proxy_rotation = config.get("proxy_rotation", False)
+        proxy_list = config.get("proxy_list", [])
+        
+        if proxy_rotation and proxy_list:
+            import random
+            proxy_url = random.choice(proxy_list)
+            self.logger.info(f"A usar proxy rotativo selecionado: {proxy_url}")
+        elif proxy_url:
+            self.logger.info(f"A usar proxy definido em configuração: {proxy_url}")
+        
+        if proxy_url:
+            options.add_argument(f"--proxy-server={proxy_url}")
+            options.add_argument("--proxy-bypass-list=<-loopback>")
+            # Additional proxy settings for better stealth
+            options.add_argument("--proxy-pac-url=")
+            options.add_argument("--disable-proxy-certificate-handler")
+
+        # Random User-Agent
+        if config.get("random_user_agent") and not config.get("user_agent"):
+            try:
+                import random
+
+                # Get browser version from driver info if available
+                browser_version = driver_info.get("version", "120.0.0.0") if driver_info else "120.0.0.0"
+                browser_name = driver_info.get("name", "chrome").lower() if driver_info else "chrome"
+
+                if browser_name == "chrome":
+                    # Generate Chrome user agents with actual version
+                    chrome_versions = [browser_version, "119.0.0.0", "118.0.0.0"]
+                    selected_version = random.choice(chrome_versions)
+                    candidate_uas = [
+                        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{selected_version} Safari/537.36",
+                        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{selected_version} Safari/537.36",
+                        f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{selected_version} Safari/537.36",
+                    ]
+                elif browser_name == "firefox":
+                    # Generate Firefox user agents
+                    firefox_versions = ["121.0", "120.0", "119.0"]
+                    selected_version = random.choice(firefox_versions)
+                    candidate_uas = [
+                        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{selected_version}) Gecko/20100101 Firefox/{selected_version}",
+                        f"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:{selected_version}) Gecko/20100101 Firefox/{selected_version}",
+                        f"Mozilla/5.0 (X11; Linux x86_64; rv:{selected_version}) Gecko/20100101 Firefox/{selected_version}",
+                    ]
+                else:
+                    # Fallback to Chrome with snapshot version
+                    candidate_uas = [
+                        f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser_version} Safari/537.36",
+                    ]
+
+                config["user_agent"] = random.choice(candidate_uas)
+                self.logger.info(
+                    f"User-Agent aleatório selecionado: {config['user_agent']}"
+                )
+            except Exception as e:
+                self.logger.warning(f"Falha ao gerar User-Agent aleatório: {e}")
+                pass
 
         if config.get("user_agent"):
             self.logger.debug(
@@ -267,7 +425,7 @@ class DriverManager:
             options.add_argument("--no-sandbox")
 
     def _apply_firefox_options(
-            self, options: FirefoxOptions, config: BrowserConfig, profile_dir: FilePath
+        self, options: FirefoxOptions, config: BrowserConfig, profile_dir: FilePath, driver_info: Optional[DriverInfo] = None
     ) -> None:
         self._setup_common_options(options)
         if config.get("headless", True):

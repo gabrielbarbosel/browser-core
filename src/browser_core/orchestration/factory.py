@@ -35,12 +35,12 @@ class WorkerFactory:
         self.workforce_run_dir = workforce_run_dir
 
     def create_worker(
-            self,
-            driver_info: DriverInfo,
-            profile_dir: Path,
-            worker_id: str,
-            consolidated_log_handler: Optional[logging.Handler] = None,
-            engine: str = "selenium",
+        self,
+        driver_info: DriverInfo,
+        profile_dir: Path,
+        worker_id: str,
+        consolidated_log_handler: Optional[logging.Handler] = None,
+        engine: Optional[str] = None,
     ) -> Worker:
         """
         Cria, configura e retorna uma nova instância de Worker.
@@ -58,7 +58,7 @@ class WorkerFactory:
         # Configura o logger específico para este worker
         task_logger = setup_task_logger(
             logger_name=worker_id,
-            log_dir=self.workforce_run_dir,
+            log_dir=self.workforce_run_dir / worker_id,
             config=self.settings.get("logging", {}),
             consolidated_handler=consolidated_log_handler,
         )
@@ -74,13 +74,16 @@ class WorkerFactory:
         )
 
         # Seleciona e injeta o engine apropriado
-        if engine == "selenium":
+        selected_engine = engine or self.settings.get("engine", "selenium")
+        if selected_engine == "selenium":
             provider = SeleniumProvider(self.settings.get("browser", {}))
-            engine_instance = provider.get_engine(driver_info.get("name", "chrome"), worker)
-        elif engine == "playwright":
+            engine_instance = provider.get_engine(
+                driver_info.get("name", "chrome"), worker
+            )
+        elif selected_engine == "playwright":
             engine_instance = PlaywrightEngine(worker, self.settings.get("browser", {}))
         else:
-            raise ValueError(f"Engine desconhecido: {engine}")
+            raise ValueError(f"Engine desconhecido: {selected_engine}")
 
         worker.set_engine(engine_instance)
         return worker

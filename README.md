@@ -25,8 +25,7 @@ recursos disponíveis.
 
 ## Introdução
 
-Automatizar tarefas de navegador exige controle refinado sobre perfis, versões de drivers e paralelismo. O *
-*Browser-Core** abstrai essa complexidade oferecendo:
+Automatizar tarefas de navegador exige controle refinado sobre perfis, versões de drivers e paralelismo. **Browser-Core** abstrai essa complexidade oferecendo:
 
 - Camadas de snapshots reutilizáveis para capturar o estado exato do navegador (cookies, localStorage, extensões, etc.).
 - Workers isolados que partem desses snapshots e executam tarefas independentes em paralelo.
@@ -92,7 +91,7 @@ O uso típico divide-se em duas fases: criação dos snapshots e execução das 
    import os
    from browser_core import Orchestrator, Worker, create_selector
    from browser_core.types import SelectorType
-   
+
    APP_USER = os.getenv("APP_USER")
    APP_PASSWORD = os.getenv("APP_PASSWORD")
 

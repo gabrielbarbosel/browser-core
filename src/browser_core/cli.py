@@ -131,7 +131,7 @@ def list_snapshots(ctx: click.Context):
     if not snapshots_dir.exists() or not any(snapshots_dir.glob("*.json")):
         click.echo(f"Nenhum snapshot encontrado em '{snapshots_dir}'.")
         click.echo(
-            f"Dica: Crie um snapshot base com 'browser-core snapshots create-base <ID>'"
+            "Dica: Crie um snapshot base com 'browser-core snapshots create-base <ID>'"
         )
         return
 
@@ -224,6 +224,12 @@ def debug_snapshot(ctx: click.Context, snapshot_id: str):
 @click.option("--worker-function", required=True)
 @click.option("--squad-size", default=4, show_default=True)
 @click.option("--headless/--no-headless", default=True, show_default=True)
+@click.option(
+    "--engine",
+    type=click.Choice(["selenium", "playwright"], case_sensitive=False),
+    default=None,
+    help="Motor de automação a utilizar nesta execução.",
+)
 @click.pass_context
 def run_tasks(
     ctx: click.Context,
@@ -233,10 +239,13 @@ def run_tasks(
     worker_function: str,
     squad_size: int,
     headless: bool,
+    engine: str | None,
 ):
     """Executa tarefas em paralelo usando um arquivo de dados."""
     orchestrator = Orchestrator(ctx.obj.settings)
     orchestrator.settings["browser"]["headless"] = headless
+    if engine:
+        orchestrator.settings["engine"] = engine
 
     func = _load_callable(Path(worker_script), worker_function)
 

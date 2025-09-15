@@ -13,10 +13,10 @@ class BrowserCoreError(Exception):
     """
 
     def __init__(
-            self,
-            message: str,
-            context: Optional[Dict[str, Any]] = None,
-            original_error: Optional[Exception] = None,
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+        original_error: Optional[Exception] = None,
     ):
         super().__init__(message)
         self.message = message
@@ -74,6 +74,7 @@ class BrowserCrashError(WorkerError):
     (ex: página de erro, sessão expirada), sinalizando ao Orchestrator
     que o worker deve ser destruído e a tarefa re-enfileirada.
     """
+
     pass
 
 
@@ -84,11 +85,11 @@ class ElementNotFoundError(BrowserCoreError):
     """Lançada quando um elemento esperado não é encontrado na página."""
 
     def __init__(
-            self,
-            message: str,
-            selector: Optional[str] = None,
-            timeout_ms: Optional[int] = None,
-            **kwargs: Any,
+        self,
+        message: str,
+        selector: Optional[str] = None,
+        timeout_ms: Optional[int] = None,
+        **kwargs: Any,
     ):
         context = kwargs.get("context", {})
         if selector:
